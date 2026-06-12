@@ -161,7 +161,7 @@ Invenio OS is a single platform that connects every layer of a warehouse operati
 
 ```bash
 # Clone the repository
-git clone https://github.com/Shraddhov07/invenio-os.git
+git clone https://github.com/Shraddhav07/invenio-os.git
 cd invenio-os
 
 # Install dependencies
@@ -306,15 +306,12 @@ Please ensure your code builds without errors (`npm run build`) before submittin
 If you discover a security vulnerability, please open a private issue rather than a public one.
 
 ---
-
-## Team
+## Team 
 
 | Role | Contributor |
 |---|---|
-| Lead Developer & Architect | [Your Name](https://github.com/Shraddhov07) |
-| UI/UX Design | *Add contributor* |
-| AI Integration | *Add contributor* |
-| 3D Simulation | *Add contributor* |
+| Developer & Architect | [Shradha Vishwakarma](https://github.com/Shraddhav07) |
+
 
 ---
 

@@ -236,6 +236,13 @@ Live alert feed with critical misplacement incidents flagged automatically. One-
 
 ---
 
+### 📋 Mission Control
+Operational command center showing active task dispatcher, worker fleet logs, live telemetry tracker, and manual AGV task assignment interface.
+
+![Mission Control](docs/screenshots/mission-control.png)
+
+---
+
 ## Project Structure
 
 ```

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  
+  /* Redesign custom colors mapping to match requirements */
+  --color-background-dark: #0B0B0D;
+  --color-card-surface: #121317;
+  --color-elevated-surface: #171A20;
+  --color-border-custom: #22252C;
+  --color-primary-accent: #FF6B35;
+  --color-success-custom: #22C55E;
+  --color-warning-custom: #F59E0B;
+  --color-error-custom: #EF4444;
+  
+  /* Remap tailwind colors to globally update existing code values to new palette */
+  --color-slate-950: #0B0B0D;
+  --color-zinc-950: #0B0B0D;
+  --color-zinc-900: #121317;
+  --color-zinc-800: #22252C;
+  --color-zinc-700: #22252C;
+  --color-cyan-500: #FF6B35;
+  --color-cyan-400: #FF6B35;
+  --color-cyan-600: #E05626;
+  --color-emerald-500: #22C55E;
+  --color-emerald-400: #22C55E;
+  --color-rose-500: #EF4444;
+  --color-rose-400: #EF4444;
+  --color-amber-500: #F59E0B;
+  --color-amber-400: #F59E0B;
+  --color-zinc-300: #FFFFFF;
+  --color-zinc-400: #A1A1AA;
+  --color-zinc-500: #A1A1AA;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: #0B0B0D;
+  color: #FFFFFF;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.3);
+}
+
+/* Redesigned calm panels */
+.glass-panel {
+  background: #121317;
+  border: 1px solid #22252C;
+}
+
+.glass-card {
+  background: #171A20;
+  border: 1px solid #22252C;
+}
+
+/* ThreeJS Canvas styling override */
+.canvas-container canvas {
+  display: block;
+}
+
+/* Typography styles */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: #FFFFFF;
+}

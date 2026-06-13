@@ -1,10 +1,14 @@
 import React, { useState } from 'react'
-import { AlertTriangle, Bell, Clock, ShieldCheck, Check, Navigation } from 'lucide-react'
+import { AlertTriangle, Bell, Clock, ShieldCheck, Check, Navigation, X } from 'lucide-react'
 import { useInvenioStore } from '../store/store'
 
 export const AlertsView: React.FC = () => {
-  const { alerts, resolveAlert, assignWorkerToFixAlert } = useInvenioStore()
+  const { alerts, resolveAlert, assignWorkerToFixAlert, shelves } = useInvenioStore()
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning'>('all')
+
+  const [assignmentModal, setAssignmentModal] = useState<{ isOpen: boolean; alertId: string | null }>({ isOpen: false, alertId: null })
+  const [targetShelf, setTargetShelf] = useState("A1")
+  const [selectedWorker, setSelectedWorker] = useState<"best" | "alpha" | "beta">("best")
 
   const getFilteredAlerts = () => {
     if (filter === 'all') return alerts
@@ -12,6 +16,13 @@ export const AlertsView: React.FC = () => {
   }
 
   const activeAlerts = getFilteredAlerts()
+
+  const handleFixAlert = () => {
+    if (assignmentModal.alertId && targetShelf) {
+      assignWorkerToFixAlert(assignmentModal.alertId, targetShelf, selectedWorker);
+      setAssignmentModal({ isOpen: false, alertId: null });
+    }
+  }
 
   return (
     <div className="w-full h-full p-6 flex flex-col space-y-6 overflow-y-auto bg-[#0B0B0D] text-white">
@@ -60,7 +71,7 @@ export const AlertsView: React.FC = () => {
             <div>
               <span className="text-[10px] uppercase tracking-wider text-[#A1A1AA] block font-semibold">Critical exceptions</span>
               <span className="text-sm font-extrabold text-white mt-1 font-mono block">
-                {alerts.filter(a => a.severity === 'critical').length} Active
+                {alerts.filter(a => a.severity === 'critical' && !a.resolved).length} Active
               </span>
             </div>
           </div>
@@ -75,7 +86,7 @@ export const AlertsView: React.FC = () => {
             <div>
               <span className="text-[10px] uppercase tracking-wider text-[#A1A1AA] block font-semibold">Verification Warnings</span>
               <span className="text-sm font-extrabold text-white mt-1 font-mono block">
-                {alerts.filter(a => a.severity === 'warning').length} Awaiting
+                {alerts.filter(a => a.severity === 'warning' && !a.resolved).length} Awaiting
               </span>
             </div>
           </div>
@@ -87,7 +98,7 @@ export const AlertsView: React.FC = () => {
       <div className="bg-[#121317] rounded-xl border border-[#22252C] p-5 flex flex-col space-y-4">
         <span className="text-[10px] uppercase tracking-widest text-[#A1A1AA] font-semibold">Active Incident Register</span>
 
-        {activeAlerts.length === 0 ? (
+        {activeAlerts.filter(a => !a.resolved).length === 0 ? (
           <div className="py-20 text-center text-[#A1A1AA] border border-dashed border-[#22252C] rounded-xl flex flex-col items-center">
             <ShieldCheck className="w-8 h-8 text-[#22C55E] mb-2" />
             <span className="text-xs font-semibold text-white">All Systems Operational</span>
@@ -95,7 +106,7 @@ export const AlertsView: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {activeAlerts.map((alert) => (
+            {activeAlerts.filter(a => !a.resolved).map((alert) => (
               <div 
                 key={alert.id}
                 className={`p-4 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${
@@ -129,32 +140,13 @@ export const AlertsView: React.FC = () => {
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-auto">
                   {alert.severity === 'critical' && (
-                    <>
-                      <button
-                        onClick={() => assignWorkerToFixAlert(alert.id, 'best')}
-                        className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded bg-[#FF6B35] hover:bg-[#FF8A5B] text-xs font-bold text-black transition-all shadow-md shadow-[#FF6B35]/10"
-                      >
-                        <Navigation className="w-3.5 h-3.5 fill-current" />
-                        <span>Fix Automatically</span>
-                      </button>
-
-                      <div className="flex items-center space-x-1 bg-[#171A20] rounded border border-[#22252C] p-0.5 h-[30px]">
-                        <button
-                          onClick={() => assignWorkerToFixAlert(alert.id, 'alpha')}
-                          className="px-2 py-1 hover:bg-zinc-800 rounded text-[10px] text-zinc-300 font-mono hover:text-[#FF6B35] transition"
-                          title="Assign Alpha Forklift"
-                        >
-                          Alpha
-                        </button>
-                        <button
-                          onClick={() => assignWorkerToFixAlert(alert.id, 'beta')}
-                          className="px-2 py-1 hover:bg-zinc-800 rounded text-[10px] text-zinc-300 font-mono hover:text-[#FF6B35] transition"
-                          title="Assign Beta Forklift"
-                        >
-                          Beta
-                        </button>
-                      </div>
-                    </>
+                    <button
+                      onClick={() => setAssignmentModal({ isOpen: true, alertId: alert.id })}
+                      className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded bg-[#FF6B35] hover:bg-[#FF8A5B] text-xs font-bold text-black transition-all shadow-md shadow-[#FF6B35]/10"
+                    >
+                      <Navigation className="w-3.5 h-3.5 fill-current" />
+                      <span>Create Fix Task</span>
+                    </button>
                   )}
 
                   <button
@@ -170,6 +162,68 @@ export const AlertsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Assignment Modal */}
+      {assignmentModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#121317] border border-[#22252C] p-6 rounded-xl w-[400px] shadow-2xl flex flex-col space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Assign Fix Task</h3>
+              <button 
+                onClick={() => setAssignmentModal({ isOpen: false, alertId: null })}
+                className="text-[#A1A1AA] hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider">Destination Shelf</label>
+                <select
+                  value={targetShelf}
+                  onChange={(e) => setTargetShelf(e.target.value)}
+                  className="w-full bg-[#0B0B0D] border border-[#22252C] text-white p-2.5 rounded-lg text-sm focus:border-[#FF6B35] focus:outline-none"
+                >
+                  {Object.values(shelves).map(shelf => (
+                    <option key={shelf.id} value={shelf.id}>
+                      {shelf.id} - {shelf.zone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider">Assigned Worker</label>
+                <select
+                  value={selectedWorker}
+                  onChange={(e) => setSelectedWorker(e.target.value as any)}
+                  className="w-full bg-[#0B0B0D] border border-[#22252C] text-white p-2.5 rounded-lg text-sm focus:border-[#FF6B35] focus:outline-none"
+                >
+                  <option value="best">Auto (Best Available)</option>
+                  <option value="alpha">Alpha Forklift</option>
+                  <option value="beta">Beta Forklift</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 pt-2">
+              <button
+                onClick={() => setAssignmentModal({ isOpen: false, alertId: null })}
+                className="flex-1 px-4 py-2 bg-[#171A20] hover:bg-[#22252C] border border-[#22252C] rounded-lg text-sm font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFixAlert}
+                className="flex-1 px-4 py-2 bg-[#FF6B35] hover:bg-[#FF8A5B] rounded-lg text-sm font-bold text-black shadow-md shadow-[#FF6B35]/20 transition"
+              >
+                Assign & Dispatch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

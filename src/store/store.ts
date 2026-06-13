@@ -23,6 +23,9 @@ import {
   isShelfAllowedForCategory,
   syncWarehouseState,
 } from "./utils";
+import { db } from "../db/index";
+import { products } from "../db/schema";
+import { productToInventoryItem } from "../db/utils";
 
 export const useInvenioStore = create<InvenioState>((set, get) => ({
   theme: "dark",
@@ -83,6 +86,36 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     })),
 
+  fetchInventory: async () => {
+    try {
+      const allProducts = await db.select().from(products);
+      const inventoryItems = allProducts.map(productToInventoryItem);
+      set({ inventory: inventoryItems });
+    } catch (e) {
+      console.error("Failed to fetch inventory from db", e);
+    }
+  },
+
+  addInventoryItem: async (item) => {
+    try {
+      await db.insert(products).values({
+        sku: item.sku,
+        name: item.name,
+        category: item.category,
+        zone: item.zone,
+        assignedShelf: item.assignedShelf,
+        currentShelf: item.currentShelf,
+        status: item.status,
+        quantity: item.quantity,
+      });
+      set((state) => ({
+        inventory: [item, ...state.inventory],
+      }));
+    } catch (e) {
+      console.error("Failed to insert inventory item into db", e);
+    }
+  },
+
   setConnectionStatus: (service, status) =>
     set((state) => ({
       connections: { ...state.connections, [service]: status },
@@ -119,273 +152,6 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       };
     }),
 
-  simulatePlacement: (shelfId, isCorrect) =>
-    set((state) => {
-      if (state.manualTask.workerId !== null) return {};
-      const timeStr = new Date().toTimeString().split(" ")[0];
-      const shelf = state.shelves[shelfId];
-      if (!shelf) return {};
-
-      const updatedShelves = {
-        ...state.shelves,
-        [shelfId]: {
-          ...shelf,
-          status: (isCorrect ? "verified" : "pending") as ShelfStatus,
-        },
-      };
-      const newActivity: ActivityEvent = {
-        id: `act-${Date.now()}`,
-        time: timeStr,
-        message: isCorrect
-          ? `Shelf verified: ${shelf.name}`
-          : `Verification pending: ${shelf.name}`,
-        type: isCorrect ? "success" : "warning",
-      };
-
-      let updatedAlerts = [...state.alerts];
-      if (isCorrect) {
-        updatedAlerts = state.alerts.filter((a) => a.shelfId !== shelfId);
-      } else {
-        updatedAlerts.push({
-          id: `alert-${Date.now()}`,
-          timestamp: timeStr,
-          severity: "warning",
-          message: `Shelf ${shelfId} needs verification`,
-          resolved: false,
-          shelfId,
-        });
-      }
-
-      return {
-        shelves: updatedShelves,
-        activities: [newActivity, ...state.activities.slice(0, 49)],
-        alerts: updatedAlerts,
-      };
-    }),
-
-  simulateTimeout: (shelfId) =>
-    set((state) => {
-      if (state.manualTask.workerId !== null) return {};
-      const timeStr = new Date().toTimeString().split(" ")[0];
-      const shelfItem =
-        state.inventory.find((i) => i.assignedShelf === shelfId) ||
-        state.inventory[0];
-
-      const updatedInventory = state.inventory.map((item) =>
-        item.assignedShelf === shelfId
-          ? { ...item, status: "error" as ShelfStatus, currentShelf: "H1" }
-          : item,
-      );
-      const newActivity: ActivityEvent = {
-        id: `act-${Date.now()}`,
-        time: timeStr,
-        message: `Item misplaced: ${shelfItem.name} on H1`,
-        type: "error",
-      };
-
-      setTimeout(
-        () => get().assignWorkerTask(shelfItem.name, "H1", shelfId),
-        100,
-      );
-
-      const sync = syncWarehouseState({
-        shelves: state.shelves,
-        inventory: updatedInventory,
-        alerts: state.alerts,
-      });
-      return {
-        inventory: updatedInventory,
-        shelves: sync.shelves,
-        activities: [newActivity, ...state.activities.slice(0, 49)],
-        alerts: sync.alerts,
-      };
-    }),
-
-  simulateDeviceStatus: (online) =>
-    set((state) => {
-      const timeStr = new Date().toTimeString().split(" ")[0];
-      const newActivity: ActivityEvent = {
-        id: `act-${Date.now()}`,
-        time: timeStr,
-        message: online ? `ESP32 device back online` : `ESP32 offline`,
-        type: online ? "success" : "error",
-      };
-
-      let updatedAlerts = online
-        ? state.alerts.filter((a) => !a.message.includes("ESP32"))
-        : [
-            ...state.alerts,
-            {
-              id: `alert-${Date.now()}`,
-              timestamp: timeStr,
-              severity: "critical" as "critical",
-              message: `ESP32 offline`,
-              resolved: false,
-            },
-          ];
-      return {
-        connections: {
-          ...state.connections,
-          esp32: online ? "connected" : "offline",
-        },
-        networkHealth: online ? 99 : 74,
-        activities: [newActivity, ...state.activities.slice(0, 49)],
-        alerts: updatedAlerts,
-      };
-    }),
-
-  simulateNewArrival: () =>
-    set((state) => {
-      const timeStr = new Date().toTimeString().split(" ")[0];
-      const items = [
-        {
-          name: "Sprite Bottles",
-          category: "Beverages",
-          qty: 120,
-          assignedShelf: "C3",
-          zone: "Zone C",
-        },
-        {
-          name: "Batteries",
-          category: "Electronics",
-          qty: 80,
-          assignedShelf: "A2",
-          zone: "Zone A",
-        },
-        {
-          name: "Sugar Sacks",
-          category: "Food",
-          qty: 150,
-          assignedShelf: "B2",
-          zone: "Zone B",
-        },
-      ];
-      const chosen = items[Math.floor(Math.random() * items.length)];
-
-      const itemsOnRec = state.inventory.filter(
-        (i) => i.currentShelf === "REC",
-      );
-      const usedSlots = itemsOnRec.reduce(
-        (acc, curr) => acc + Math.ceil(curr.quantity / 10),
-        0,
-      );
-
-      if (usedSlots + Math.ceil(chosen.qty / 10) > 20) {
-        if (
-          !state.alerts.some(
-            (a) =>
-              a.message === `Arrival Rejected: Receiving Area Full.` &&
-              !a.resolved,
-          )
-        ) {
-          return {
-            alerts: [
-              {
-                id: `alert-rej-${Date.now()}`,
-                timestamp: timeStr,
-                severity: "critical",
-                message: `Arrival Rejected: Receiving Area Full.`,
-                resolved: false,
-                shelfId: "REC",
-              },
-              ...state.alerts,
-            ],
-          };
-        }
-        return {};
-      }
-
-      const newItem: InventoryItem = {
-        sku: `SKU-N${Math.floor(100 + Math.random() * 899)}`,
-        name: chosen.name,
-        category: chosen.category,
-        zone: "Receiving Area",
-        assignedShelf: chosen.assignedShelf,
-        currentShelf: "REC",
-        status: "pending",
-        quantity: chosen.qty,
-      };
-      const newTask: TaskItem = {
-        id: `task-arrival-${Date.now()}`,
-        itemName: chosen.name,
-        itemShelfId: "REC",
-        correctShelfId: chosen.assignedShelf,
-        status: "pending",
-        assignedWorkerId: null,
-        type: "automated",
-      };
-      const sync = syncWarehouseState({
-        shelves: state.shelves,
-        inventory: [newItem, ...state.inventory],
-        alerts: state.alerts,
-      });
-
-      return {
-        inventory: [newItem, ...state.inventory],
-        shelves: sync.shelves,
-        alerts: sync.alerts,
-        taskQueue: [...state.taskQueue, newTask],
-        activities: [
-          {
-            id: `act-${Date.now()}`,
-            time: timeStr,
-            message: `New Inventory Arrived: ${chosen.name} (${chosen.qty} units) at Receiving Area. Status: Awaiting Placement.`,
-            type: "info",
-          },
-          ...state.activities.slice(0, 49),
-        ],
-        notifications: [
-          {
-            id: `notif-${Date.now()}-${Math.random()}`,
-            message: `New Cargo Arrived: ${chosen.name} (${chosen.qty} units) in Receiving Area. Task created.`,
-            type: "info" as const,
-            timestamp: timeStr,
-          },
-          ...state.notifications,
-        ].slice(0, 5),
-      };
-    }),
-
-  simulateAIRecommendation: () =>
-    set((state) => {
-      if (state.manualTask.workerId !== null) return {};
-      const recs: AIRecommendation[] = [
-        {
-          id: `rec-${Date.now()}`,
-          title: "Safety Hazard Detected",
-          description:
-            "Batteries are stored close to Chemical Solvents on H1. Displace to Cold Storage F2.",
-          impact: "Hazard eliminated",
-          type: "safety",
-          active: true,
-        },
-        {
-          id: `rec-${Date.now()}`,
-          title: "Low Stock Forecast",
-          description:
-            "Office Chairs quantity is down to 24 units. Reorder suggested within 3 days.",
-          impact: "Out-of-stock risk minimized",
-          type: "efficiency",
-          active: true,
-        },
-      ];
-      const chosen = recs[Math.floor(Math.random() * recs.length)];
-      if (state.recommendations.some((r) => r.title === chosen.title))
-        return {};
-
-      return {
-        recommendations: [chosen, ...state.recommendations],
-        activities: [
-          {
-            id: `act-${Date.now()}`,
-            time: new Date().toTimeString().split(" ")[0],
-            message: `AI recommendation generated`,
-            type: "info",
-          },
-          ...state.activities.slice(0, 49),
-        ],
-      };
-    }),
 
   locateItem: (itemNameOrSku) => {
     const state = get();
@@ -888,7 +654,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
     })),
   clearManualTaskFeedback: () => set({ manualTaskFeedback: null }),
 
-  assignWorkerToFixAlert: (alertId, preferredWorkerId = "best") =>
+  assignWorkerToFixAlert: (alertId, targetShelfId, preferredWorkerId = "best") =>
     set((state) => {
       const alert = state.alerts.find((a) => a.id === alertId);
       if (!alert) return {};
@@ -904,13 +670,8 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
             )),
       );
       if (!item) return {};
-      let targetShelf = item.assignedShelf;
-      if (
-        !isShelfAllowedForCategory(item.category, targetShelf, state.shelves)
-      ) {
-        targetShelf = getRecommendedShelves(item.category)[0] || "A1";
-        item.assignedShelf = targetShelf;
-      }
+
+      item.assignedShelf = targetShelfId;
       let assignedWorkerId: "alpha" | "beta" | null =
         preferredWorkerId === "alpha" && state.workers.alpha.status === "idle"
           ? "alpha"
@@ -947,7 +708,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
             id: `task-fix-${Date.now()}`,
             itemName: item.name,
             itemShelfId: item.currentShelf,
-            correctShelfId: targetShelf,
+            correctShelfId: targetShelfId,
             status: "reserved",
             assignedWorkerId,
             type: "automated",
@@ -960,7 +721,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
           {
             id: `act-${Date.now()}`,
             time: new Date().toTimeString().split(" ")[0],
-            message: `Fix assigned: dispatches ${assignedWorkerId.toUpperCase()} to move ${item.name} to ${targetShelf}`,
+            message: `Fix assigned: dispatches ${assignedWorkerId.toUpperCase()} to move ${item.name} to ${targetShelfId}`,
             type: "success",
           },
           ...state.activities.slice(0, 49),
@@ -968,7 +729,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
         notifications: [
           {
             id: `notif-${Date.now()}`,
-            message: `Fix Dispatch: ${assignedWorkerId.toUpperCase()} moving ${item.name} to ${targetShelf}.`,
+            message: `Fix Dispatch: ${assignedWorkerId.toUpperCase()} moving ${item.name} to ${targetShelfId}.`,
             type: "success" as const,
             timestamp: new Date().toTimeString().split(" ")[0],
           } as const,

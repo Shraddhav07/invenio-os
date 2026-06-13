@@ -135,10 +135,6 @@ export const DashboardView: React.FC = () => {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF6B35] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#FF6B35]"></span>
           </span>
-          <span className="font-mono text-zinc-400">
-            Live telemetry stream: {eventThroughput[eventThroughput.length - 1]}{" "}
-            msg/s
-          </span>
         </div>
       </div>
 

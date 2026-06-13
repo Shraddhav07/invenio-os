@@ -13,7 +13,7 @@ import { useInvenioStore } from "../store/store";
 import { isShelfAllowedForCategory, getRecommendedZones } from "../store/utils";
 import type { InventoryItem } from "../store/types";
 export const InventoryView: React.FC = () => {
-  const { inventory, locateItem, simulateNewArrival, shelves } =
+  const { inventory, locateItem, shelves } =
     useInvenioStore();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -100,35 +100,35 @@ export const InventoryView: React.FC = () => {
     else setZone("Receiving Area");
   };
 
-  const handleAddNewItem = (e: React.FormEvent) => {
+  const handleAddNewItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
 
-    useInvenioStore.setState((state) => {
-      const sku = `SKU-${Math.floor(1000 + Math.random() * 8999)}`;
-      const newItem: InventoryItem = {
-        sku,
-        name,
-        category,
-        zone,
-        assignedShelf: shelf,
-        currentShelf: shelf,
-        status: "verified",
-        quantity: qty,
-      };
-      return {
-        inventory: [newItem, ...state.inventory],
-        activities: [
-          {
-            id: `act-${Date.now()}`,
-            time: new Date().toTimeString().split(" ")[0],
-            message: `Inventory added: ${name} (${qty} units)`,
-            type: "success",
-          },
-          ...state.activities,
-        ],
-      };
-    });
+    const sku = `SKU-${Math.floor(1000 + Math.random() * 8999)}`;
+    const newItem: InventoryItem = {
+      sku,
+      name,
+      category,
+      zone,
+      assignedShelf: shelf,
+      currentShelf: shelf,
+      status: "verified",
+      quantity: qty,
+    };
+
+    await useInvenioStore.getState().addInventoryItem(newItem);
+
+    useInvenioStore.setState((state) => ({
+      activities: [
+        {
+          id: `act-${Date.now()}`,
+          time: new Date().toTimeString().split(" ")[0],
+          message: `Inventory added: ${name} (${qty} units)`,
+          type: "success",
+        },
+        ...state.activities,
+      ],
+    }));
 
     // Reset form
     setName("");
@@ -153,13 +153,6 @@ export const InventoryView: React.FC = () => {
         </div>
 
         <div className="flex space-x-3">
-          <button
-            onClick={simulateNewArrival}
-            className="px-3.5 py-1.5 rounded-lg bg-[#121317] hover:bg-[#171A20] text-xs font-semibold text-zinc-300 border border-[#22252C] transition-colors"
-          >
-            Simulate Arrival
-          </button>
-
           <button
             onClick={() => setShowAddForm(true)}
             className="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg bg-[#FF6B35] hover:bg-[#E05626] text-xs font-semibold text-white transition-colors"

@@ -5,7 +5,6 @@ export type PageRoute =
   | "assistant"
   | "analytics"
   | "alerts"
-  | "simulator"
   | "settings"
   | "camfeeds";
 
@@ -166,12 +165,6 @@ export interface InvenioState {
   ) => void;
   dismissNotification: (id: string) => void;
 
-  simulatePlacement: (shelfId: string, isCorrect: boolean) => void;
-  simulateTimeout: (shelfId: string) => void;
-  simulateDeviceStatus: (online: boolean) => void;
-  simulateNewArrival: () => void;
-  simulateAIRecommendation: () => void;
-
   locateItem: (itemNameOrSku: string) => boolean;
   clearActivePath: () => void;
 
@@ -203,6 +196,7 @@ export interface InvenioState {
   clearManualTaskFeedback: () => void;
   assignWorkerToFixAlert: (
     alertId: string,
+    targetShelfId: string,
     preferredWorkerId?: "alpha" | "beta" | "best",
   ) => void;
   dispatchWorkerToTask: (
@@ -233,4 +227,7 @@ export interface InvenioState {
     message: string,
     shelfId?: string,
   ) => void;
+
+  fetchInventory: () => Promise<void>;
+  addInventoryItem: (item: InventoryItem) => Promise<void>;
 }

@@ -69,7 +69,7 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
 
   return (
     <group
-      position={position}
+      position={[position[0], shelf.id === "REC" ? position[1] : position[1] - 0.8, position[2]]}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(shelf);
@@ -87,7 +87,7 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
       <mesh position={[-0.75, 0.4, -0.35]}>
         <boxGeometry args={[0.06, 2.2, 0.06]} />
         <meshStandardMaterial
-          color="#4A4E54"
+          color="#B0B0B0"
           metalness={0.9}
           roughness={0.15}
         />
@@ -95,7 +95,7 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
       <mesh position={[0.75, 0.4, -0.35]}>
         <boxGeometry args={[0.06, 2.2, 0.06]} />
         <meshStandardMaterial
-          color="#4A4E54"
+          color="#B0B0B0"
           metalness={0.9}
           roughness={0.15}
         />
@@ -103,7 +103,7 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
       <mesh position={[-0.75, 0.4, 0.35]}>
         <boxGeometry args={[0.06, 2.2, 0.06]} />
         <meshStandardMaterial
-          color="#4A4E54"
+          color="#B0B0B0"
           metalness={0.9}
           roughness={0.15}
         />
@@ -111,7 +111,7 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
       <mesh position={[0.75, 0.4, 0.35]}>
         <boxGeometry args={[0.06, 2.2, 0.06]} />
         <meshStandardMaterial
-          color="#4A4E54"
+          color="#B0B0B0"
           metalness={0.9}
           roughness={0.15}
         />
@@ -119,15 +119,15 @@ export const ShelfGroup: React.FC<ShelfGroupProps> = ({
 
       <mesh position={[0, -0.4, 0]}>
         <boxGeometry args={[1.5, 0.06, 0.7]} />
-        <meshStandardMaterial color="#171A20" metalness={0.6} roughness={0.3} />
+        <meshStandardMaterial color="#D3D3D3" metalness={0.6} roughness={0.3} />
       </mesh>
       <mesh position={[0, 0.3, 0]}>
         <boxGeometry args={[1.5, 0.06, 0.7]} />
-        <meshStandardMaterial color="#171A20" metalness={0.6} roughness={0.3} />
+        <meshStandardMaterial color="#D3D3D3" metalness={0.6} roughness={0.3} />
       </mesh>
       <mesh position={[0, 1.0, 0]}>
         <boxGeometry args={[1.5, 0.06, 0.7]} />
-        <meshStandardMaterial color="#171A20" metalness={0.6} roughness={0.3} />
+        <meshStandardMaterial color="#D3D3D3" metalness={0.6} roughness={0.3} />
       </mesh>
 
       <mesh position={[0, 1.4, 0]}>

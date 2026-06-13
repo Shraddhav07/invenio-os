@@ -35,8 +35,35 @@ export const CameraController: React.FC<CameraControllerProps> = ({
     if (focusedShelfId) isLerpingShelf.current = true;
   }
 
-  // Add the useFrame logic here exactly as it is in your original file
-  // (Omitted for brevity)
+  useFrame((state, delta) => {
+    // If a reset was triggered
+    if (resetTrigger > lastReset.current) {
+      isLerpingShelf.current = false;
+      
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(new THREE.Vector3(0, 0, 0), delta * 5);
+      }
+      state.camera.position.lerp(new THREE.Vector3(0, 14, 16), delta * 5);
+      
+      if (state.camera.position.distanceTo(new THREE.Vector3(0, 14, 16)) < 0.5) {
+         lastReset.current = resetTrigger;
+         onResetDone();
+      }
+    } else if (isLerpingShelf.current && focusedShelfPos) {
+      const targetVec = new THREE.Vector3(focusedShelfPos[0], focusedShelfPos[1], focusedShelfPos[2]);
+      // Position camera above and slightly pulled back from the focused shelf
+      const camPos = new THREE.Vector3(focusedShelfPos[0], focusedShelfPos[1] + 6, focusedShelfPos[2] + 8);
+      
+      state.camera.position.lerp(camPos, delta * 4);
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(targetVec, delta * 4);
+      }
+
+      if (state.camera.position.distanceTo(camPos) < 0.2) {
+        isLerpingShelf.current = false;
+      }
+    }
+  });
 
   return null;
 };

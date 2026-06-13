@@ -18,7 +18,6 @@ import { WarehouseMapView } from "./views/WarehouseMapView";
 import { InventoryView } from "./views/InventoryView";
 import { AIAssistantView } from "./views/AIAssistantView";
 import { AlertsView } from "./views/AlertsView";
-import { HardwareSimulatorView } from "./views/HardwareSimulatorView";
 import CamFeeds from "./views/CamFeeds";
 
 // Helper component to render active page route
@@ -38,8 +37,6 @@ const RouteContainer: React.FC = () => {
       return <CamFeeds />;
     case "alerts":
       return <AlertsView />;
-    case "simulator":
-      return <HardwareSimulatorView />;
     default:
       return <DashboardView />;
   }
@@ -58,13 +55,9 @@ function App() {
     document.documentElement.className = "dark";
   }, []);
 
-  // Smooth Worker task animator loop
+  // Fetch initial inventory on mount
   useEffect(() => {
-    const workerInterval = setInterval(() => {
-      const state = useInvenioStore.getState();
-      state.tickWorker(0.012); // delta speed per 100ms
-    }, 100);
-    return () => clearInterval(workerInterval);
+    useInvenioStore.getState().fetchInventory();
   }, []);
 
   return (

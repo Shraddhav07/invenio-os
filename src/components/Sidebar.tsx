@@ -23,7 +23,6 @@ export const Sidebar: React.FC = () => {
     { id: "camfeeds", label: "CamFeeds", icon: Webcam },
     { id: "assistant", label: "AI Search", icon: HelpCircle },
     { id: "alerts", label: "Alerts", icon: ShieldAlert },
-    { id: "simulator", label: "Mission Control", icon: Terminal },
   ] as const;
 
   return (

@@ -32,8 +32,8 @@ export const WarehouseScene: React.FC<{
 
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[-10, 20, -10]} intensity={0.3} />
+      <ambientLight intensity={1.2} />
+      <directionalLight position={[-10, 20, -10]} intensity={0.8} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
         <planeGeometry args={[32, 32]} />
@@ -58,31 +58,31 @@ export const WarehouseScene: React.FC<{
 
       <ZoneBoundary
         name="Zone A"
-        position={[-4, 1, 0]}
+        position={[-4, 0, 0]}
         size={[3.5, 2.5, 6]}
         color="#22252C"
       />
       <ZoneBoundary
         name="Zone B"
-        position={[0, 1, 0]}
+        position={[0, 0, 0]}
         size={[3.5, 2.5, 6]}
         color="#22252C"
       />
       <ZoneBoundary
         name="Zone C"
-        position={[4, 1, 0]}
+        position={[4, 0, 0]}
         size={[3.5, 2.5, 6]}
         color="#22252C"
       />
       <ZoneBoundary
         name="Hazard Storage"
-        position={[-8, 1, 0]}
+        position={[-8, 0, 0]}
         size={[3.5, 2.5, 10]}
         color="#EF4444"
       />
       <ZoneBoundary
         name="Cold Storage"
-        position={[8, 1, 0]}
+        position={[8, 0, 0]}
         size={[3.5, 2.5, 10]}
         color="#FF6B35"
       />
@@ -96,21 +96,23 @@ export const WarehouseScene: React.FC<{
         />
       ))}
 
-      {activePath && activePath.length > 0 && (
-        <Line points={activePath} color="#FF6B35" lineWidth={4} />
-      )}
+      <Line 
+        points={activePath && activePath.length > 0 ? activePath : [[0, 0, 0], [0, 0, 0]]} 
+        color="#FF6B35" 
+        lineWidth={4} 
+        visible={!!(activePath && activePath.length > 0)}
+      />
 
       {Object.values(workers).map((worker) => (
         <React.Fragment key={worker.id}>
-          {worker.path && worker.status !== "idle" && (
-            <Line
-              points={worker.path}
-              color={worker.color}
-              lineWidth={1.5}
-              dashed={true}
-              dashScale={1.5}
-            />
-          )}
+          <Line
+            points={worker.path && worker.path.length > 0 ? worker.path : [[0, 0, 0], [0, 0, 0]]}
+            color={worker.color}
+            lineWidth={1.5}
+            dashed={true}
+            dashScale={1.5}
+            visible={!!(worker.path && worker.path.length > 0 && worker.status !== "idle")}
+          />
           <ForkliftWorker
             position={worker.position}
             label={worker.label}

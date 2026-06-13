@@ -30,6 +30,18 @@ export const WarehouseMapView: React.FC = () => {
   return (
     <div className="w-full h-full relative flex overflow-hidden bg-[#0B0B0D]">
       {/* HUD Elements omitted for brevity */}
+      <div className="absolute top-4 left-4 z-10 flex space-x-2">
+        <button
+          onClick={() => {
+            useInvenioStore.getState().clearActivePath();
+            setSelectedShelf(null);
+            setResetTrigger(Date.now());
+          }}
+          className="bg-[#121317]/80 backdrop-blur-md border border-[#22252C] text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-[#171A20] hover:border-[#FF6B35]/50 transition-all shadow-lg"
+        >
+          Reset Camera & Path
+        </button>
+      </div>
 
       <div className="flex-1 h-full canvas-container bg-[#0B0B0D] relative">
         <Canvas camera={{ position: [0, 14, 16], fov: 50 }}>

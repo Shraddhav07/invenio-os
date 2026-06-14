@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import {
   MonitorPlay, Play, Square, Trash2, Video, Activity,
   Server, Crosshair, Settings, ShieldCheck, Map,
@@ -62,43 +63,36 @@ export default function CamFeeds() {
 
   // Ref to the <img> element for getBoundingClientRect
   const imgRef = useRef<HTMLImageElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ==========================================
   // STATE POLLING (mapping progress feedback)
   // ==========================================
-  const startPolling = useCallback(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const [stateRes, invRes] = await Promise.all([
-          fetch(`${API_URL}/state`),
-          fetch(`${API_URL}/inventory`),
-        ]);
-        const data = await stateRes.json();
-        const inv = await invRes.json();
+  const { data: serverData } = useQuery({
+    queryKey: ["camera-feed-data"],
+    queryFn: async () => {
+      const [stateRes, invRes] = await Promise.all([
+        fetch(`${API_URL}/state`),
+        fetch(`${API_URL}/inventory`),
+      ]);
+      const stateData = await stateRes.json();
+      const invData = await invRes.json();
+      return { state: stateData, inventory: invData };
+    },
+    refetchInterval: isStreamActive ? POLL_INTERVAL : false,
+    enabled: isStreamActive,
+  });
 
-        setMappingState(data.app_state);
-        setPointsCount(data.polygon_points_count ?? 0);
-        setInventory(inv);
+  useEffect(() => {
+    if (serverData) {
+      setMappingState(serverData.state.app_state);
+      setPointsCount(serverData.state.polygon_points_count ?? 0);
+      setInventory(serverData.inventory);
 
-        if (data.app_state === "MAPPING_SHELF") {
-          setStatus(`Mapping shelf area — click point ${(data.polygon_points_count ?? 0) + 1} of 4 on the video.`);
-        }
-      } catch {
-        // backend offline, skip
+      if (serverData.state.app_state === "MAPPING_SHELF") {
+        setStatus(`Mapping shelf area — click point ${(serverData.state.polygon_points_count ?? 0) + 1} of 4 on the video.`);
       }
-    }, POLL_INTERVAL);
-  }, []);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
     }
-  }, []);
-
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  }, [serverData]);
 
   // ==========================================
   // CAMERA CONTROLS
@@ -120,7 +114,6 @@ export default function CamFeeds() {
     setStatus("Camera running — click a detected tag to assign it.");
     setStreamError(false);
     setIsStreamActive(true);
-    startPolling();
 
     // Set via React state — avoids React/DOM timing race that causes black frame
     setStreamSrc(`${API_URL}/video_feed?t=${Date.now()}`);
@@ -133,7 +126,6 @@ export default function CamFeeds() {
     setStreamSrc("");
     setStreamError(false);
     setMappingState("IDLE");
-    stopPolling();
   };
 
   const clearZones = async () => {

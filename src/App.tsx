@@ -2,6 +2,9 @@ import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useInvenioStore } from "./store/store";
+import { db } from "./db/index";
+import { products } from "./db/schema";
+import { productToInventoryItem } from "./db/utils";
 import { Sidebar } from "./components/Sidebar";
 import { CommandPalette } from "./components/CommandPalette";
 import {
@@ -66,16 +69,22 @@ function App() {
     };
   }, []);
 
-  // Wrap inventory fetch with TanStack Query for caching & deduplication
-  useQuery({
+  // Fetch inventory with TanStack Query for caching & deduplication
+  const { data: dbInventory } = useQuery({
     queryKey: ["neon-db-inventory"],
     queryFn: async () => {
-      await useInvenioStore.getState().fetchInventory();
-      return useInvenioStore.getState().inventory;
+      const allProducts = await db.select().from(products);
+      return allProducts.map(productToInventoryItem);
     },
     refetchInterval: 60000, // Background poll every minute to sync low-ping
     staleTime: 30000,
   });
+
+  useEffect(() => {
+    if (dbInventory) {
+      useInvenioStore.setState({ inventory: dbInventory });
+    }
+  }, [dbInventory]);
 
   return (
     <div className="w-screen h-screen flex overflow-hidden bg-[#0B0B0D] text-white select-none">

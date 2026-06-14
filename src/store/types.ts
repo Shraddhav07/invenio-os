@@ -236,6 +236,6 @@ export interface InvenioState {
     shelfId?: string,
   ) => void;
 
-  fetchInventory: () => Promise<void>;
+
   addInventoryItem: (item: InventoryItem) => Promise<void>;
 }

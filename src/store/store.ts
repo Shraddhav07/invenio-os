@@ -195,15 +195,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     })),
 
-  fetchInventory: async () => {
-    try {
-      const allProducts = await db.select().from(products);
-      const inventoryItems = allProducts.map(productToInventoryItem);
-      set({ inventory: inventoryItems });
-    } catch (e) {
-      console.error("Failed to fetch inventory from db", e);
-    }
-  },
+
 
   addInventoryItem: async (item) => {
     try {

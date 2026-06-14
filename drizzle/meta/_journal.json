@@ -8,6 +8,13 @@
       "when": 1781332751833,
       "tag": "0000_mean_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781386015506,
+      "tag": "0001_curved_black_panther",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ CV Inventory OS - FastAPI Backend
 Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -14,7 +14,8 @@ import json
 import os
 import threading
 import time
-from typing import Optional
+from typing import Optional, List
+import asyncio
 
 app = FastAPI(title="CV Inventory OS")
 
@@ -24,6 +25,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==========================================
+# WEBSOCKET MANAGER
+# ==========================================
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
 
 # ==========================================
 # GLOBAL STATE
@@ -47,23 +71,29 @@ class CVEngine:
 
         # App state machine
         self.app_state = "IDLE"         # "IDLE" | "MAPPING_SHELF"
-        self.active_shelf_id: Optional[int] = None
+        self.active_shelf_id: Optional[str] = None
         self.current_polygon_points: list = []  # In NATIVE pixel coords
 
         # Data
         self.db_filename = "cv_inventory_db.json"
-        self.full_db: dict = {"metadata": {}, "cameras": {}}
-        self.global_metadata: dict = {}   # { int_id: {type, name, locked_product_id, current_shelf} }
-        self.zones: list = []             # [{id, relative_polygon}]
-        self.cam_tracking: dict = {}      # { int_id: {last_cx, last_cy} }
+        
+        # New Normalized DB Schema
+        self.full_db: dict = {
+            "products": {},
+            "cameras": {},
+            "shelves": {},
+            "detections": {},
+            "aruco_markers": {}
+        }
         self.cam_key: str = "0"
+        
+        # We also need a background task to push WS updates
+        self.loop = None
 
         # ArUco setup
         self._setup_aruco()
 
     # Output frame is always 1280x720 (16:9) regardless of camera native resolution.
-    # This makes coordinate space identical to the frontend aspect-video container,
-    # so clicks always land exactly where you clicked with no letterbox offset.
     OUTPUT_W = 1280
     OUTPUT_H = 720
 
@@ -85,17 +115,27 @@ class CVEngine:
         if os.path.exists(self.db_filename):
             try:
                 with open(self.db_filename, "r") as f:
-                    self.full_db = json.load(f)
+                    data = json.load(f)
+                    # Migrate old DB if necessary
+                    if "metadata" in data:
+                        self.full_db = {
+                            "products": {},
+                            "cameras": {},
+                            "shelves": {},
+                            "detections": {},
+                            "aruco_markers": {}
+                        }
+                    else:
+                        self.full_db = data
+                        if "products" not in self.full_db: self.full_db["products"] = {}
+                        if "cameras" not in self.full_db: self.full_db["cameras"] = {}
+                        if "shelves" not in self.full_db: self.full_db["shelves"] = {}
+                        if "detections" not in self.full_db: self.full_db["detections"] = {}
+                        if "aruco_markers" not in self.full_db: self.full_db["aruco_markers"] = {}
             except Exception as e:
                 print(f"DB read error: {e}")
-                self.full_db = {"metadata": {}, "cameras": {}}
 
     def write_db(self):
-        self.full_db["metadata"] = {str(k): v for k, v in self.global_metadata.items()}
-        self.full_db["cameras"][self.cam_key] = {
-            "zones": self.zones,
-            "tracking": {str(k): v for k, v in self.cam_tracking.items()},
-        }
         try:
             with open(self.db_filename, "w") as f:
                 json.dump(self.full_db, f, indent=4)
@@ -104,10 +144,24 @@ class CVEngine:
 
     def load_for_camera(self):
         self.read_db()
-        self.global_metadata = {int(k): v for k, v in self.full_db.get("metadata", {}).items()}
-        cam_data = self.full_db.get("cameras", {}).get(self.cam_key, {"zones": [], "tracking": {}})
-        self.zones = cam_data.get("zones", [])
-        self.cam_tracking = {int(k): v for k, v in cam_data.get("tracking", {}).items()}
+        if self.cam_key not in self.full_db["cameras"]:
+            self.full_db["cameras"][self.cam_key] = {
+                "device_id": self.cam_key,
+                "name": f"Camera {self.cam_key}",
+                "location": "Warehouse",
+                "is_active": True
+            }
+            self.write_db()
+
+    async def _notify_ws(self):
+        await manager.broadcast({"type": "inventory_update", "data": self.full_db})
+
+    def notify_ws(self):
+        try:
+            if self.loop is not None and self.loop.is_running():
+                asyncio.run_coroutine_threadsafe(self._notify_ws(), self.loop)
+        except Exception as e:
+            pass
 
     # ==========================================
     # CAMERA THREAD
@@ -124,9 +178,7 @@ class CVEngine:
                 self.vid = None
                 return False
 
-            self.cam_key = cam_id
-            # We normalise every frame to OUTPUT_W x OUTPUT_H before detection,
-            # so native_w/h always reflects the output space, not the camera sensor.
+            self.cam_key = str(cam_id)
             self.native_w = CVEngine.OUTPUT_W
             self.native_h = CVEngine.OUTPUT_H
 
@@ -150,13 +202,12 @@ class CVEngine:
 
     def _capture_loop(self):
         while True:
-            # Check running state without holding the lock during read
             with self.lock:
                 if not self.is_running or self.vid is None:
                     break
-                vid = self.vid  # local ref
+                vid = self.vid
 
-            ret, frame = vid.read()  # blocking call — must NOT hold lock here
+            ret, frame = vid.read()
             if not ret:
                 time.sleep(0.05)
                 continue
@@ -171,11 +222,7 @@ class CVEngine:
     # FRAME PROCESSING & ANNOTATION
     # ==========================================
     def _process_frame(self, frame: np.ndarray) -> np.ndarray:
-        # Step 1: Resize to fixed 16:9 output — all coordinate math runs in this space.
-        # Using INTER_LINEAR for speed; INTER_AREA gives slightly better downscale quality
-        # but is slower. Swap if quality matters more than FPS.
         frame = cv2.resize(frame, (CVEngine.OUTPUT_W, CVEngine.OUTPUT_H), interpolation=cv2.INTER_LINEAR)
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         if self.modern_api:
@@ -186,84 +233,113 @@ class CVEngine:
         detected = []
 
         with self.lock:
+            db_changed = False
             if ids is not None:
                 for i in range(len(ids)):
-                    m_id = int(ids[i][0])
+                    m_id = str(int(ids[i][0]))
                     m_corners = corners[i][0]
                     cx = int((m_corners[0][0] + m_corners[2][0]) / 2.0)
                     cy = int((m_corners[0][1] + m_corners[2][1]) / 2.0)
                     detected.append((m_id, cx, cy))
-                    if m_id not in self.cam_tracking:
-                        self.cam_tracking[m_id] = {}
-                    self.cam_tracking[m_id]["last_cx"] = cx
-                    self.cam_tracking[m_id]["last_cy"] = cy
+                    
+                    # Update detection
+                    self.full_db["detections"][m_id] = {
+                        "camera_id": self.cam_key,
+                        "aruco_marker_id": m_id,
+                        "x": cx,
+                        "y": cy,
+                        "timestamp": time.time()
+                    }
+                    db_changed = True
+
+                    # Auto-capture new markers as products
+                    if m_id not in self.full_db["aruco_markers"]:
+                        sku = f"SKU-{m_id}-{int(time.time())}"
+                        self.full_db["products"][m_id] = {
+                            "sku": sku,
+                            "name": f"Auto Product {m_id}",
+                            "category": "Uncategorized",
+                            "zone": "TBD",
+                            "assigned_shelf": "",
+                            "current_shelf": "",
+                            "status": "verified",
+                            "quantity": 1,
+                            "aruco_marker_id": m_id
+                        }
+                        self.full_db["aruco_markers"][m_id] = {
+                            "marker_id": m_id,
+                            "type": "product",
+                            "linked_product_id": m_id,
+                            "linked_shelf_id": None
+                        }
+                        db_changed = True
 
             self.detected_markers = detected
             current_visible = [m for m, _, _ in detected]
 
             # --- Draw Shelf Zones ---
             active_shelf_polygons = {}
-            for zone in self.zones:
-                z_id = zone["id"]
-                if z_id in current_visible:
-                    anchor = self.cam_tracking.get(z_id, {})
-                    ax, ay = anchor.get("last_cx"), anchor.get("last_cy")
-                    if ax is not None and ay is not None:
-                        abs_poly = [(ax + dx, ay + dy) for dx, dy in zone["relative_polygon"]]
-                        pts = np.array(abs_poly, np.int32)
-                        active_shelf_polygons[z_id] = pts
-                        cv2.polylines(frame, [pts.reshape((-1, 1, 2))], True, (0, 255, 255), 2)
-                        name = self.global_metadata.get(z_id, {}).get("name", f"Zone {z_id}")
-                        cv2.putText(frame, name, abs_poly[0], cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+            for s_id, s_data in self.full_db["shelves"].items():
+                if s_data.get("camera_id") != self.cam_key:
+                    continue
+                if s_id in current_visible:
+                    # Anchor is the shelf marker
+                    anchor = self.full_db["detections"].get(s_id)
+                    if anchor and time.time() - anchor.get("timestamp", 0) < 2.0:
+                        ax, ay = anchor["x"], anchor["y"]
+                        rel_poly = s_data.get("polygon", [])
+                        if rel_poly:
+                            abs_poly = [(ax + dx, ay + dy) for dx, dy in rel_poly]
+                            pts = np.array(abs_poly, np.int32)
+                            active_shelf_polygons[s_id] = pts
+                            cv2.polylines(frame, [pts.reshape((-1, 1, 2))], True, (0, 255, 255), 2)
+                            name = s_data.get("name", f"Shelf {s_id}")
+                            cv2.putText(frame, name, abs_poly[0], cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
 
             # --- Draw Tags & Collision ---
-            db_changed = False
             for m_id, cx, cy in detected:
-                if m_id in self.global_metadata:
-                    data = self.global_metadata[m_id]
-                    if data["type"] == "Shelf":
+                marker_info = self.full_db["aruco_markers"].get(m_id)
+                if marker_info:
+                    m_type = marker_info["type"]
+                    if m_type == "shelf":
+                        shelf_data = self.full_db["shelves"].get(m_id, {})
                         color = (0, 215, 255)
-                        label = f"Shelf: {data['name']}"
-                    else:  # Product
+                        label = f"Shelf: {shelf_data.get('name', m_id)}"
+                    else:
+                        product_data = self.full_db["products"].get(m_id, {})
                         new_shelf = None
                         for s_id, poly in active_shelf_polygons.items():
                             if cv2.pointPolygonTest(poly, (float(cx), float(cy)), False) >= 0:
                                 new_shelf = s_id
                                 break
 
-                        if data.get("current_shelf") != new_shelf:
-                            data["current_shelf"] = new_shelf
+                        if product_data.get("current_shelf") != (new_shelf or ""):
+                            product_data["current_shelf"] = new_shelf or ""
                             db_changed = True
 
-                        if new_shelf is not None:
-                            shelf_data = self.global_metadata.get(new_shelf, {})
+                        if new_shelf:
+                            shelf_data = self.full_db["shelves"].get(new_shelf, {})
                             shelf_name = shelf_data.get("name", f"ID {new_shelf}")
-                            locked_id = shelf_data.get("locked_product_id")
-                            is_misplaced = bool(locked_id and str(locked_id).strip() and str(locked_id).strip() != str(m_id))
+                            
+                            label = f"{product_data.get('name', 'Product')} (In {shelf_name})"
+                            color = (0, 255, 0)
 
-                            if is_misplaced:
-                                label = f"MISPLACED in {shelf_name}!"
-                                color = (0, 0, 255)
-                            else:
-                                label = f"{data['name']} (In {shelf_name})"
-                                color = (0, 255, 0)
-
-                            s_anchor = self.cam_tracking.get(new_shelf, {})
-                            sax, say = s_anchor.get("last_cx"), s_anchor.get("last_cy")
-                            if sax and say:
-                                cv2.line(frame, (cx, cy), (sax, say), color, 1)
+                            s_anchor = self.full_db["detections"].get(new_shelf)
+                            if s_anchor:
+                                cv2.line(frame, (cx, cy), (s_anchor["x"], s_anchor["y"]), color, 1)
                         else:
-                            label = f"Product: {data['name']}"
+                            label = f"Product: {product_data.get('name', 'Product')}"
                             color = (0, 255, 0)
                 else:
                     color = (200, 200, 200)
-                    label = f"ID {m_id} (click to assign)"
+                    label = f"ID {m_id} (unknown)"
 
                 cv2.circle(frame, (cx, cy), 6, color, -1)
                 cv2.putText(frame, label, (cx - 20, cy - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
 
             if db_changed:
                 self.write_db()
+                self.notify_ws()
 
             # --- Draw in-progress polygon ---
             if self.app_state == "MAPPING_SHELF" and self.current_polygon_points:
@@ -275,19 +351,15 @@ class CVEngine:
 
         return frame
 
-
 engine = CVEngine()
-
 
 # ==========================================
 # REQUEST MODELS
 # ==========================================
 
 class ClickPayload(BaseModel):
-    # Coordinates in DISPLAY space (browser pixels)
     x: float
     y: float
-    # Display dimensions so backend can scale to native
     display_w: float
     display_h: float
 
@@ -296,10 +368,13 @@ class TagSavePayload(BaseModel):
     name: str
     locked_product_id: Optional[str] = ""
 
-
 # ==========================================
 # ROUTES
 # ==========================================
+
+@app.on_event("startup")
+async def startup_event():
+    engine.loop = asyncio.get_event_loop()
 
 @app.post("/camera/start")
 def camera_start(cam_id: str = "0"):
@@ -317,7 +392,6 @@ def camera_stop():
 
 @app.get("/video_feed")
 def video_feed():
-    """MJPEG stream endpoint. Browsers require specific headers to render inline."""
     def generate():
         while engine.is_running:
             with engine.lock:
@@ -331,7 +405,7 @@ def video_feed():
                 )
             else:
                 time.sleep(0.01)
-            time.sleep(0.033)  # ~30fps cap
+            time.sleep(0.033)
 
     return StreamingResponse(
         generate(),
@@ -352,14 +426,9 @@ def camera_dimensions():
 
 @app.post("/canvas/click")
 def canvas_click(payload: ClickPayload):
-    """
-    Receives a click in DISPLAY coordinates.
-    Scales to native coordinates, then handles tag click or polygon point.
-    """
     if not engine.is_running:
         return {"status": "ignored"}
 
-    # Scale from display space → native space
     scale_x = engine.native_w / payload.display_w if payload.display_w > 0 else 1.0
     scale_y = engine.native_h / payload.display_h if payload.display_h > 0 else 1.0
 
@@ -367,7 +436,6 @@ def canvas_click(payload: ClickPayload):
     ny = int(payload.y * scale_y)
 
     with engine.lock:
-        # --- MAPPING MODE: collect polygon points ---
         if engine.app_state == "MAPPING_SHELF":
             engine.current_polygon_points.append((nx, ny))
             pts_count = len(engine.current_polygon_points)
@@ -375,38 +443,59 @@ def canvas_click(payload: ClickPayload):
             if pts_count < 4:
                 return {"status": "mapping", "message": f"Mapping shelf: click point {pts_count + 1} of 4..."}
 
-            # 4th point reached — finalize zone
             visible_ids = [m for m, _, _ in engine.detected_markers]
-            if engine.active_shelf_id not in visible_ids:
+            if str(engine.active_shelf_id) not in visible_ids:
                 engine.current_polygon_points = []
                 engine.app_state = "IDLE"
                 return {"status": "error", "message": "Anchor tag lost! Keep the tag visible while drawing."}
 
-            anchor = engine.cam_tracking.get(engine.active_shelf_id, {})
-            ax, ay = anchor.get("last_cx"), anchor.get("last_cy")
-
-            if ax is None or ay is None:
+            anchor = engine.full_db["detections"].get(str(engine.active_shelf_id))
+            if not anchor:
                 engine.current_polygon_points = []
                 engine.app_state = "IDLE"
                 return {"status": "error", "message": "Anchor tracking lost. Try again."}
 
+            ax, ay = anchor["x"], anchor["y"]
             rel_poly = [(px - ax, py - ay) for px, py in engine.current_polygon_points]
-            engine.zones = [z for z in engine.zones if z["id"] != engine.active_shelf_id]
-            engine.zones.append({"id": engine.active_shelf_id, "relative_polygon": rel_poly})
+            
+            s_id = str(engine.active_shelf_id)
+            if s_id not in engine.full_db["shelves"]:
+                engine.full_db["shelves"][s_id] = {
+                    "camera_id": engine.cam_key,
+                    "aruco_marker_id": s_id,
+                    "name": f"Shelf {s_id}",
+                    "zone": "General",
+                    "polygon": rel_poly
+                }
+            else:
+                engine.full_db["shelves"][s_id]["polygon"] = rel_poly
+                engine.full_db["shelves"][s_id]["camera_id"] = engine.cam_key
+
             engine.write_db()
+            engine.notify_ws()
             engine.current_polygon_points = []
             engine.app_state = "IDLE"
             return {"status": "zone_saved", "message": "Shelf area saved! Status: IDLE."}
 
-        # --- IDLE MODE: check if user clicked near a tag ---
         for m_id, cx, cy in engine.detected_markers:
             dist = ((nx - cx) ** 2 + (ny - cy) ** 2) ** 0.5
             if dist < 40:
-                existing = engine.global_metadata.get(m_id, {"type": "Shelf", "name": "", "locked_product_id": "", "current_shelf": None})
+                marker_info = engine.full_db["aruco_markers"].get(m_id, {})
+                m_type = marker_info.get("type", "Product").capitalize()
+                
+                if m_type == "Shelf":
+                    existing = engine.full_db["shelves"].get(m_id, {})
+                else:
+                    existing = engine.full_db["products"].get(m_id, {})
+
+                data = {
+                    "type": m_type,
+                    "name": existing.get("name", ""),
+                }
                 return {
                     "status": "open_popup",
                     "marker_id": m_id,
-                    "data": existing,
+                    "data": data,
                 }
 
     return {"status": "no_action", "message": "No tag found at that location."}
@@ -414,19 +503,53 @@ def canvas_click(payload: ClickPayload):
 
 @app.post("/tags/{marker_id}")
 def save_tag(marker_id: int, payload: TagSavePayload, start_mapping: bool = False):
+    m_id = str(marker_id)
     with engine.lock:
-        existing_shelf = engine.global_metadata.get(marker_id, {}).get("current_shelf")
-        engine.global_metadata[marker_id] = {
-            "type": payload.type,
-            "name": payload.name,
-            "locked_product_id": payload.locked_product_id or None,
-            "current_shelf": existing_shelf,
-        }
+        if payload.type == "Shelf":
+            if m_id in engine.full_db["products"]:
+                del engine.full_db["products"][m_id]
+            engine.full_db["shelves"][m_id] = {
+                "camera_id": engine.cam_key,
+                "aruco_marker_id": m_id,
+                "name": payload.name,
+                "zone": "General",
+                "polygon": engine.full_db["shelves"].get(m_id, {}).get("polygon", [])
+            }
+            engine.full_db["aruco_markers"][m_id] = {
+                "marker_id": m_id,
+                "type": "shelf",
+                "linked_product_id": None,
+                "linked_shelf_id": m_id
+            }
+        else:
+            if m_id in engine.full_db["shelves"]:
+                del engine.full_db["shelves"][m_id]
+            existing = engine.full_db["products"].get(m_id, {})
+            sku = existing.get("sku", f"SKU-{m_id}-{int(time.time())}")
+            engine.full_db["products"][m_id] = {
+                "sku": sku,
+                "name": payload.name,
+                "category": existing.get("category", "Uncategorized"),
+                "zone": existing.get("zone", "TBD"),
+                "assigned_shelf": "",
+                "current_shelf": existing.get("current_shelf", ""),
+                "status": "verified",
+                "quantity": 1,
+                "aruco_marker_id": m_id
+            }
+            engine.full_db["aruco_markers"][m_id] = {
+                "marker_id": m_id,
+                "type": "product",
+                "linked_product_id": m_id,
+                "linked_shelf_id": None
+            }
+
         engine.write_db()
+        engine.notify_ws()
 
         if start_mapping and payload.type == "Shelf":
             engine.app_state = "MAPPING_SHELF"
-            engine.active_shelf_id = marker_id
+            engine.active_shelf_id = m_id
             engine.current_polygon_points = []
             return {"status": "mapping_started", "message": f"Mapping '{payload.name}': click the 4 corners of the shelf area."}
 
@@ -436,16 +559,18 @@ def save_tag(marker_id: int, payload: TagSavePayload, start_mapping: bool = Fals
 @app.post("/zones/clear")
 def clear_zones():
     with engine.lock:
-        engine.zones = []
+        for s_id in engine.full_db["shelves"]:
+            if engine.full_db["shelves"][s_id].get("camera_id") == engine.cam_key:
+                engine.full_db["shelves"][s_id]["polygon"] = []
         engine.app_state = "IDLE"
         engine.current_polygon_points = []
         engine.write_db()
+        engine.notify_ws()
     return {"status": "ok", "message": "All zones cleared."}
 
 
 @app.get("/state")
 def get_state():
-    """Poll endpoint for current app state (mapping progress etc)."""
     with engine.lock:
         return {
             "app_state": engine.app_state,
@@ -454,41 +579,21 @@ def get_state():
             "detected_count": len(engine.detected_markers),
         }
 
-
 @app.get("/inventory")
 def get_inventory():
-    """Returns all known tags split into shelves and products with live status."""
+    """Returns normalized db state"""
     with engine.lock:
-        visible_ids = {m for m, _, _ in engine.detected_markers}
-        shelves = []
-        products = []
+        return engine.full_db
 
-        for tag_id, data in engine.global_metadata.items():
-            entry = {
-                "id": tag_id,
-                "name": data.get("name", f"ID {tag_id}"),
-                "online": tag_id in visible_ids,
-            }
-            if data.get("type") == "Shelf":
-                has_zone = any(z["id"] == tag_id for z in engine.zones)
-                locked = data.get("locked_product_id")
-                entry["has_zone"] = has_zone
-                entry["locked_product_id"] = locked
-                shelves.append(entry)
-            else:
-                current_shelf = data.get("current_shelf")
-                shelf_name = None
-                if current_shelf is not None:
-                    shelf_name = engine.global_metadata.get(current_shelf, {}).get("name")
-                # Misplaced check
-                is_misplaced = False
-                if current_shelf is not None:
-                    locked = engine.global_metadata.get(current_shelf, {}).get("locked_product_id")
-                    if locked and str(locked).strip() != str(tag_id):
-                        is_misplaced = True
-                entry["current_shelf"] = current_shelf
-                entry["shelf_name"] = shelf_name
-                entry["misplaced"] = is_misplaced
-                products.append(entry)
-
-        return {"shelves": shelves, "products": products}
+@app.websocket("/ws/inventory")
+async def websocket_inventory(websocket: WebSocket):
+    await manager.connect(websocket)
+    with engine.lock:
+        await websocket.send_json({"type": "inventory_update", "data": engine.full_db})
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

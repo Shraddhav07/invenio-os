@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { useInvenioStore } from "./store/store";
 import { Sidebar } from "./components/Sidebar";
 import { CommandPalette } from "./components/CommandPalette";
@@ -10,6 +11,8 @@ import {
   Info,
   AlertCircle,
   Navigation,
+  CloudUpload,
+  RefreshCw,
 } from "lucide-react";
 
 // Import views
@@ -55,10 +58,24 @@ function App() {
     document.documentElement.className = "dark";
   }, []);
 
-  // Fetch initial inventory on mount
+  // Fetch initial inventory on mount and init websocket
   useEffect(() => {
-    useInvenioStore.getState().fetchInventory();
+    useInvenioStore.getState().initWebSocket();
+    return () => {
+      useInvenioStore.getState().cleanupWebSocket();
+    };
   }, []);
+
+  // Wrap inventory fetch with TanStack Query for caching & deduplication
+  useQuery({
+    queryKey: ["neon-db-inventory"],
+    queryFn: async () => {
+      await useInvenioStore.getState().fetchInventory();
+      return useInvenioStore.getState().inventory;
+    },
+    refetchInterval: 60000, // Background poll every minute to sync low-ping
+    staleTime: 30000,
+  });
 
   return (
     <div className="w-screen h-screen flex overflow-hidden bg-[#0B0B0D] text-white select-none">
@@ -76,6 +93,27 @@ function App() {
             </kbd>
             <span>to launch command center</span>
           </div>
+
+          {/* Sync Controls */}
+          <div className="flex items-center space-x-4">
+             <label className="flex items-center space-x-2 cursor-pointer">
+                <span className="text-xs text-zinc-400 font-medium">Live Sync</span>
+                <div 
+                  className={`w-8 h-4 rounded-full flex items-center p-0.5 transition-colors ${useInvenioStore(s => s.isLiveSyncEnabled) ? "bg-emerald-500" : "bg-zinc-700"}`}
+                  onClick={() => useInvenioStore.getState().toggleLiveSync()}
+                >
+                  <div className={`w-3 h-3 bg-white rounded-full shadow-md transform transition-transform ${useInvenioStore(s => s.isLiveSyncEnabled) ? "translate-x-4" : "translate-x-0"}`} />
+                </div>
+             </label>
+             <button
+               onClick={() => useInvenioStore.getState().pushUpdates()}
+               disabled={useInvenioStore(s => s.pendingDbUpdates.length === 0)}
+               className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded hover:bg-[#FF6B35]/20 disabled:opacity-50 transition-colors text-xs font-bold"
+             >
+               <CloudUpload className="w-3.5 h-3.5" />
+               <span>Push Updates ({useInvenioStore(s => s.pendingDbUpdates.length)})</span>
+             </button>
+          </div>
         </header>
 
         {/* Dynamic transition container */}
@@ -87,7 +125,7 @@ function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
-              className="w-full h-full absolute inset-0"
+              className="w-full h-full absolute inset-0 overflow-y-auto overflow-x-hidden"
             >
               <RouteContainer />
             </motion.div>

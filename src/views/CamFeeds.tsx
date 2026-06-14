@@ -1,22 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MonitorPlay,
-  Play,
-  Square,
-  Trash2,
-  Video,
-  Activity,
-  Server,
-  Crosshair,
-  Settings,
-  ShieldCheck,
-  Map,
-  Package,
-  Archive,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
+  MonitorPlay, Play, Square, Trash2, Video, Activity,
+  Server, Crosshair, Settings, ShieldCheck, Map,
+  Package, Archive, Wifi, WifiOff, AlertTriangle,
 } from "lucide-react";
 
 const API_URL = "http://localhost:8000";
@@ -65,10 +52,7 @@ export default function CamFeeds() {
   const [streamError, setStreamError] = useState<boolean>(false);
   const [mappingState, setMappingState] = useState<string>("IDLE");
   const [pointsCount, setPointsCount] = useState<number>(0);
-  const [inventory, setInventory] = useState<Inventory>({
-    shelves: [],
-    products: [],
-  });
+  const [inventory, setInventory] = useState<Inventory>({ shelves: [], products: [] });
 
   const [popup, setPopup] = useState<PopupState>({
     isOpen: false,
@@ -99,9 +83,7 @@ export default function CamFeeds() {
         setInventory(inv);
 
         if (data.app_state === "MAPPING_SHELF") {
-          setStatus(
-            `Mapping shelf area — click point ${(data.polygon_points_count ?? 0) + 1} of 4 on the video.`,
-          );
+          setStatus(`Mapping shelf area — click point ${(data.polygon_points_count ?? 0) + 1} of 4 on the video.`);
         }
       } catch {
         // backend offline, skip
@@ -126,9 +108,7 @@ export default function CamFeeds() {
     if (!camId) return;
 
     const safeCamId = encodeURIComponent(camId);
-    const res = await fetch(`${API_URL}/camera/start?cam_id=${safeCamId}`, {
-      method: "POST",
-    });
+    const res = await fetch(`${API_URL}/camera/start?cam_id=${safeCamId}`, { method: "POST" });
     const data = await res.json();
 
     if (data.status === "failed") {
@@ -223,7 +203,7 @@ export default function CamFeeds() {
           name: popup.data.name || "",
           locked_product_id: popup.data.locked_product_id || "",
         }),
-      },
+      }
     );
     const result = await res.json();
     setStatus(result.message || "Saved.");
@@ -240,7 +220,8 @@ export default function CamFeeds() {
   const isMappingActive = mappingState === "MAPPING_SHELF";
 
   return (
-    <div className="w-full h-full p-4 md:p-6 flex flex-col space-y-6 bg-[#0B0B0D] text-white font-sans overflow-hidden">
+    <div className="w-full min-h-screen p-4 md:p-6 flex flex-col space-y-6 bg-[#0B0B0D] text-white font-sans overflow-x-hidden">
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -254,9 +235,7 @@ export default function CamFeeds() {
         </div>
 
         <div className="flex items-center space-x-2 bg-[#121317] px-3 py-1.5 rounded-lg border border-[#22252C] text-xs">
-          <div
-            className={`w-2 h-2 rounded-full ${isStreamActive ? "bg-[#22C55E] animate-pulse" : "bg-[#EF4444]"}`}
-          />
+          <div className={`w-2 h-2 rounded-full ${isStreamActive ? "bg-[#22C55E] animate-pulse" : "bg-[#EF4444]"}`} />
           <span className="text-[#A1A1AA] font-mono">
             {isStreamActive ? "System Online" : "System Offline"}
           </span>
@@ -264,7 +243,8 @@ export default function CamFeeds() {
       </div>
 
       {/* Main grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+
         {/* Camera Feed */}
         <div className="lg:col-span-8 bg-[#121317] p-5 rounded-xl border border-[#22252C] flex flex-col min-h-[400px]">
           <div className="flex items-center justify-between pb-3 border-b border-[#22252C]">
@@ -305,9 +285,7 @@ export default function CamFeeds() {
                 onClick={handleVideoClick}
                 onError={() => {
                   setStreamError(true);
-                  setStatus(
-                    "Stream error — check backend is running and CORS is allowed.",
-                  );
+                  setStatus("Stream error — check backend is running and CORS is allowed.");
                 }}
                 className={`w-full h-full object-contain block select-none ${isMappingActive ? "cursor-crosshair" : "cursor-pointer"}`}
                 draggable="false"
@@ -315,22 +293,12 @@ export default function CamFeeds() {
             ) : isStreamActive && streamError ? (
               <div className="w-full h-full flex flex-col items-center justify-center text-[#A1A1AA] p-6">
                 <Video className="w-12 h-12 mb-3 text-red-500 opacity-60" />
-                <p className="text-xs uppercase tracking-widest text-red-400">
-                  Stream Error
-                </p>
+                <p className="text-xs uppercase tracking-widest text-red-400">Stream Error</p>
                 <p className="text-[10px] mt-2 opacity-70 text-center max-w-xs">
-                  Backend is running but the video stream failed to load. Make
-                  sure{" "}
-                  <code className="text-orange-400">
-                    http://localhost:8000/video_feed
-                  </code>{" "}
-                  is reachable from the browser and CORS is enabled.
+                  Backend is running but the video stream failed to load. Make sure <code className="text-orange-400">http://localhost:8000/video_feed</code> is reachable from the browser and CORS is enabled.
                 </p>
                 <button
-                  onClick={() => {
-                    setStreamError(false);
-                    setStreamSrc(`${API_URL}/video_feed?t=${Date.now()}`);
-                  }}
+                  onClick={() => { setStreamError(false); setStreamSrc(`${API_URL}/video_feed?t=${Date.now()}`); }}
                   className="mt-4 px-4 py-1.5 text-xs font-bold uppercase tracking-wider bg-[#FF6B35]/10 text-[#FF6B35] border border-[#FF6B35]/30 hover:bg-[#FF6B35] hover:text-white rounded transition-all"
                 >
                   Retry Stream
@@ -339,12 +307,9 @@ export default function CamFeeds() {
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[#A1A1AA] p-6">
                 <Video className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-xs uppercase tracking-widest">
-                  No Active Stream
-                </p>
+                <p className="text-xs uppercase tracking-widest">No Active Stream</p>
                 <p className="text-[10px] mt-2 opacity-50 text-center max-w-xs">
-                  Connect to a camera source from the management panel to begin
-                  mapping and tracking.
+                  Connect to a camera source from the management panel to begin mapping and tracking.
                 </p>
               </div>
             )}
@@ -352,14 +317,13 @@ export default function CamFeeds() {
         </div>
 
         {/* Right sidebar */}
-        <div className="lg:col-span-4 flex flex-col space-y-6 min-h-0 h-full">
+        <div className="lg:col-span-4 space-y-6">
+
           {/* Connection Panel */}
           <div className="bg-[#121317] p-5 rounded-xl border border-[#22252C]">
             <div className="flex items-center space-x-2 pb-3 border-b border-[#22252C]">
               <Settings className="w-4 h-4 text-[#FF6B35]" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Connection Settings
-              </h3>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Connection Settings</h3>
             </div>
 
             <form onSubmit={startCamera} className="mt-4 space-y-4">
@@ -404,9 +368,7 @@ export default function CamFeeds() {
           <div className="bg-[#121317] p-5 rounded-xl border border-[#22252C]">
             <div className="flex items-center space-x-2 pb-3 border-b border-[#22252C]">
               <Server className="w-4 h-4 text-[#FF6B35]" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Engine Management
-              </h3>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Engine Management</h3>
             </div>
 
             <div className="mt-4 space-y-4">
@@ -423,9 +385,7 @@ export default function CamFeeds() {
                 <div className="absolute top-0 left-0 w-1 h-full bg-[#FF6B35]" />
                 <div className="flex items-center gap-2 mb-1">
                   <Activity className="w-3 h-3 text-[#A1A1AA]" />
-                  <span className="text-[10px] text-[#A1A1AA] uppercase tracking-wider font-bold">
-                    System Status
-                  </span>
+                  <span className="text-[10px] text-[#A1A1AA] uppercase tracking-wider font-bold">System Status</span>
                 </div>
                 <p className="text-xs font-mono text-emerald-400 leading-relaxed break-words pl-1 mt-2">
                   {">"} {status}
@@ -455,18 +415,17 @@ export default function CamFeeds() {
           </div>
 
           {/* Inventory Panel */}
-          <div className="bg-[#121317] p-5 rounded-xl border border-[#22252C] flex flex-col flex-1 min-h-[300px]">
-            <div className="flex items-center space-x-2 pb-3 border-b border-[#22252C] shrink-0">
+          <div className="bg-[#121317] p-5 rounded-xl border border-[#22252C]">
+            <div className="flex items-center space-x-2 pb-3 border-b border-[#22252C]">
               <Archive className="w-4 h-4 text-[#FF6B35]" />
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Live Inventory
-              </h3>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Live Inventory</h3>
               <span className="ml-auto text-[10px] font-mono text-[#A1A1AA]">
                 {inventory.shelves.length}S / {inventory.products.length}P
               </span>
             </div>
 
-            <div className="mt-3 space-y-4 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+            <div className="mt-3 space-y-4 overflow-y-auto pr-1">
+
               {/* Shelves */}
               {inventory.shelves.length > 0 && (
                 <div>
@@ -480,14 +439,10 @@ export default function CamFeeds() {
                         className="flex items-center justify-between bg-[#0B0B0D] border border-[#22252C] rounded-lg px-3 py-2"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          {s.online ? (
-                            <Wifi className="w-3 h-3 text-[#22C55E] shrink-0" />
-                          ) : (
-                            <WifiOff className="w-3 h-3 text-[#A1A1AA] shrink-0" />
-                          )}
-                          <span className="text-xs text-white font-mono truncate">
-                            {s.name}
-                          </span>
+                          {s.online
+                            ? <Wifi className="w-3 h-3 text-[#22C55E] shrink-0" />
+                            : <WifiOff className="w-3 h-3 text-[#A1A1AA] shrink-0" />}
+                          <span className="text-xs text-white font-mono truncate">{s.name}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 ml-2">
                           {s.has_zone && (
@@ -500,9 +455,7 @@ export default function CamFeeds() {
                               #{s.locked_product_id}
                             </span>
                           )}
-                          <span className="text-[9px] text-[#A1A1AA] font-mono">
-                            ID {s.id}
-                          </span>
+                          <span className="text-[9px] text-[#A1A1AA] font-mono">ID {s.id}</span>
                         </div>
                       </div>
                     ))}
@@ -525,39 +478,25 @@ export default function CamFeeds() {
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          {p.online ? (
-                            <Wifi className="w-3 h-3 text-[#22C55E] shrink-0" />
-                          ) : (
-                            <WifiOff className="w-3 h-3 text-[#A1A1AA] shrink-0" />
-                          )}
+                          {p.online
+                            ? <Wifi className="w-3 h-3 text-[#22C55E] shrink-0" />
+                            : <WifiOff className="w-3 h-3 text-[#A1A1AA] shrink-0" />}
                           <div className="min-w-0">
-                            <p className="text-xs text-white font-mono truncate">
-                              {p.name}
-                            </p>
+                            <p className="text-xs text-white font-mono truncate">{p.name}</p>
                             {p.shelf_name && (
-                              <p
-                                className={`text-[9px] truncate ${p.misplaced ? "text-red-400" : "text-[#A1A1AA]"}`}
-                              >
+                              <p className={`text-[9px] truncate ${p.misplaced ? "text-red-400" : "text-[#A1A1AA]"}`}>
                                 {p.misplaced ? "⚠ " : ""}
-                                {p.misplaced
-                                  ? `Misplaced in ${p.shelf_name}`
-                                  : `In ${p.shelf_name}`}
+                                {p.misplaced ? `Misplaced in ${p.shelf_name}` : `In ${p.shelf_name}`}
                               </p>
                             )}
                             {!p.shelf_name && (
-                              <p className="text-[9px] text-[#A1A1AA]">
-                                Not on any shelf
-                              </p>
+                              <p className="text-[9px] text-[#A1A1AA]">Not on any shelf</p>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                          {p.misplaced && (
-                            <AlertTriangle className="w-3 h-3 text-red-400" />
-                          )}
-                          <span className="text-[9px] text-[#A1A1AA] font-mono">
-                            ID {p.id}
-                          </span>
+                          {p.misplaced && <AlertTriangle className="w-3 h-3 text-red-400" />}
+                          <span className="text-[9px] text-[#A1A1AA] font-mono">ID {p.id}</span>
                         </div>
                       </div>
                     ))}
@@ -566,20 +505,16 @@ export default function CamFeeds() {
               )}
 
               {/* Empty state */}
-              {inventory.shelves.length === 0 &&
-                inventory.products.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-6 text-[#A1A1AA]">
-                    <Package className="w-8 h-8 opacity-20 mb-2" />
-                    <p className="text-[10px] uppercase tracking-widest opacity-50">
-                      No tags assigned yet
-                    </p>
-                    <p className="text-[9px] opacity-40 mt-1 text-center">
-                      Click a detected tag on the video feed to assign it
-                    </p>
-                  </div>
-                )}
+              {inventory.shelves.length === 0 && inventory.products.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-6 text-[#A1A1AA]">
+                  <Package className="w-8 h-8 opacity-20 mb-2" />
+                  <p className="text-[10px] uppercase tracking-widest opacity-50">No tags assigned yet</p>
+                  <p className="text-[9px] opacity-40 mt-1 text-center">Click a detected tag on the video feed to assign it</p>
+                </div>
+              )}
             </div>
           </div>
+
         </div>
       </div>
 
@@ -601,8 +536,7 @@ export default function CamFeeds() {
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-[#22252C]">
                 <Crosshair className="w-5 h-5 text-[#FF6B35]" />
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Tag Assignment:{" "}
-                  <span className="text-[#FF6B35]">#{popup.markerId}</span>
+                  Tag Assignment: <span className="text-[#FF6B35]">#{popup.markerId}</span>
                 </h2>
               </div>
 
@@ -616,9 +550,7 @@ export default function CamFeeds() {
                         ? "bg-[#22252C] text-white"
                         : "text-[#A1A1AA] hover:text-white"
                     }`}
-                    onClick={() =>
-                      setPopup({ ...popup, data: { ...popup.data, type: t } })
-                    }
+                    onClick={() => setPopup({ ...popup, data: { ...popup.data, type: t } })}
                   >
                     {t}
                   </button>
@@ -626,21 +558,14 @@ export default function CamFeeds() {
               </div>
 
               <div className="mb-4 space-y-1">
-                <label className="block text-[10px] text-[#A1A1AA] uppercase tracking-wider">
-                  Name / Label
-                </label>
+                <label className="block text-[10px] text-[#A1A1AA] uppercase tracking-wider">Name / Label</label>
                 <input
                   type="text"
                   autoFocus
                   className="w-full bg-[#171A20] border border-[#22252C] rounded text-xs text-white px-3 py-2 focus:outline-none focus:border-[#FF6B35] transition-colors"
                   placeholder="e.g. A1, Widget-X"
                   value={popup.data.name || ""}
-                  onChange={(e) =>
-                    setPopup({
-                      ...popup,
-                      data: { ...popup.data, name: e.target.value },
-                    })
-                  }
+                  onChange={(e) => setPopup({ ...popup, data: { ...popup.data, name: e.target.value } })}
                 />
               </div>
 
@@ -655,13 +580,7 @@ export default function CamFeeds() {
                     placeholder="e.g. 99"
                     value={popup.data.locked_product_id || ""}
                     onChange={(e) =>
-                      setPopup({
-                        ...popup,
-                        data: {
-                          ...popup.data,
-                          locked_product_id: e.target.value,
-                        },
-                      })
+                      setPopup({ ...popup, data: { ...popup.data, locked_product_id: e.target.value } })
                     }
                   />
                 </div>
@@ -669,9 +588,7 @@ export default function CamFeeds() {
 
               <div className="flex gap-2 justify-end mt-6 pt-4 border-t border-[#22252C]">
                 <button
-                  onClick={() =>
-                    setPopup({ isOpen: false, markerId: null, data: {} })
-                  }
+                  onClick={() => setPopup({ isOpen: false, markerId: null, data: {} })}
                   className="px-4 py-2 text-xs font-bold text-[#A1A1AA] uppercase tracking-wider hover:text-white transition-colors"
                 >
                   Cancel

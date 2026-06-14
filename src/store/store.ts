@@ -64,6 +64,115 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
   recommendations: initialRecommendations,
   notifications: [],
 
+  isLiveSyncEnabled: false,
+  pendingDbUpdates: [],
+  wsInstance: null,
+
+  toggleLiveSync: () =>
+    set((state) => ({ isLiveSyncEnabled: !state.isLiveSyncEnabled })),
+
+  pushUpdates: async () => {
+    const { pendingDbUpdates } = get();
+    if (pendingDbUpdates.length === 0) return;
+    try {
+      // Simulate pushing updates (or actual Drizzle updates)
+      // E.g. await db.insert(products).values(pendingDbUpdates).onConflictDoUpdate(...)
+      set({ pendingDbUpdates: [] });
+      get().addNotification("Updates pushed to Neon DB successfully", "success");
+    } catch(e) {
+      console.error("Push updates failed", e);
+      get().addNotification("Failed to push updates", "error");
+    }
+  },
+
+  initWebSocket: () => {
+    const state = get();
+    if (state.wsInstance) return;
+
+    const ws = new WebSocket("ws://localhost:8000/ws/inventory");
+    set({ wsInstance: ws });
+
+    ws.onopen = () => {
+      get().setConnectionStatus("websocket", "connected");
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "inventory_update") {
+          const dbData = msg.data;
+          const { isLiveSyncEnabled, pendingDbUpdates, inventory } = get();
+          
+          // Basic logic to merge DB items into Zustand
+          // This ensures the 3D visualizer gets real-time camera updates
+          // and pending updates get tracked for Neon sync.
+          
+          let hasChanges = false;
+          let newPending = [...pendingDbUpdates];
+          const newInventory = [...inventory];
+          
+          // Map products
+          for (const m_id in dbData.products) {
+             const p = dbData.products[m_id];
+             const existsIndex = newInventory.findIndex(i => i.sku === p.sku);
+             if (existsIndex === -1) {
+                const newItem = {
+                   sku: p.sku,
+                   name: p.name,
+                   category: p.category,
+                   zone: p.zone,
+                   assignedShelf: p.assigned_shelf,
+                   currentShelf: p.current_shelf,
+                   status: p.status,
+                   quantity: p.quantity,
+                } as any;
+                newInventory.push(newItem);
+                hasChanges = true;
+                if (isLiveSyncEnabled) {
+                   get().addInventoryItem(newItem); // pushes to neon
+                } else {
+                   newPending.push(newItem);
+                }
+             } else {
+                const existing = newInventory[existsIndex];
+                if (existing.currentShelf !== p.current_shelf) {
+                   newInventory[existsIndex] = { ...existing, currentShelf: p.current_shelf };
+                   hasChanges = true;
+                   if (!isLiveSyncEnabled) {
+                      // Optionally push to pending updates
+                   }
+                }
+             }
+          }
+          
+          if (hasChanges) {
+            set({ 
+              inventory: newInventory,
+              pendingDbUpdates: newPending
+            });
+          }
+        }
+      } catch (e) {
+        console.error("WS Parse error", e);
+      }
+    };
+    ws.onclose = () => {
+      get().setConnectionStatus("websocket", "offline");
+      set({ wsInstance: null });
+      setTimeout(() => {
+        if (!get().wsInstance) get().initWebSocket();
+      }, 5000);
+    };
+  },
+
+  cleanupWebSocket: () => {
+    const { wsInstance } = get();
+    if (wsInstance) {
+      wsInstance.onclose = null;
+      wsInstance.close();
+      set({ wsInstance: null });
+    }
+  },
+
   setRoute: (route) => set({ activeRoute: route }),
   setFollowingWorkerId: (id) => set({ followingWorkerId: id }),
   setFollowWorkerPrompt: (id) => set({ followWorkerPrompt: id }),

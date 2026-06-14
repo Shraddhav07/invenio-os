@@ -149,6 +149,14 @@ export interface InvenioState {
     timestamp: string;
   }[];
 
+  isLiveSyncEnabled: boolean;
+  pendingDbUpdates: any[];
+  wsInstance: WebSocket | null;
+  toggleLiveSync: () => void;
+  pushUpdates: () => Promise<void>;
+  initWebSocket: () => void;
+  cleanupWebSocket: () => void;
+
   setRoute: (route: PageRoute) => void;
   setConnectionStatus: (
     service: "mqtt" | "websocket" | "database" | "esp32",

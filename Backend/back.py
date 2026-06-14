@@ -17,6 +17,16 @@ import time
 from typing import Optional, List
 import asyncio
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+import traceback
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+DB_URL = os.getenv("VITE_DATABASE_URL")
+
+
+
 app = FastAPI(title="CV Inventory OS")
 
 app.add_middleware(
@@ -75,9 +85,6 @@ class CVEngine:
         self.current_polygon_points: list = []  # In NATIVE pixel coords
 
         # Data
-        self.db_filename = "cv_inventory_db.json"
-        
-        # New Normalized DB Schema
         self.full_db: dict = {
             "products": {},
             "cameras": {},
@@ -90,8 +97,14 @@ class CVEngine:
         # We also need a background task to push WS updates
         self.loop = None
 
+        self.db_changed = False
+        self.db_sync_running = True
+        self.db_sync_thread = threading.Thread(target=self._db_sync_loop, daemon=True)
+        self.db_sync_thread.start()
+
         # ArUco setup
         self._setup_aruco()
+        self.load_from_db()
 
     # Output frame is always 1280x720 (16:9) regardless of camera native resolution.
     OUTPUT_W = 1280
@@ -109,41 +122,66 @@ class CVEngine:
             self.modern_api = False
 
     # ==========================================
-    # JSON PERSISTENCE
+    # DATABASE PERSISTENCE
     # ==========================================
-    def read_db(self):
-        if os.path.exists(self.db_filename):
-            try:
-                with open(self.db_filename, "r") as f:
-                    data = json.load(f)
-                    # Migrate old DB if necessary
-                    if "metadata" in data:
-                        self.full_db = {
-                            "products": {},
-                            "cameras": {},
-                            "shelves": {},
-                            "detections": {},
-                            "aruco_markers": {}
-                        }
-                    else:
-                        self.full_db = data
-                        if "products" not in self.full_db: self.full_db["products"] = {}
-                        if "cameras" not in self.full_db: self.full_db["cameras"] = {}
-                        if "shelves" not in self.full_db: self.full_db["shelves"] = {}
-                        if "detections" not in self.full_db: self.full_db["detections"] = {}
-                        if "aruco_markers" not in self.full_db: self.full_db["aruco_markers"] = {}
-            except Exception as e:
-                print(f"DB read error: {e}")
-
     def write_db(self):
+        self.db_changed = True
+
+    def load_from_db(self):
+        if not DB_URL: return
         try:
-            with open(self.db_filename, "w") as f:
-                json.dump(self.full_db, f, indent=4)
+            with psycopg2.connect(DB_URL, cursor_factory=RealDictCursor) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT * FROM cameras;")
+                    camera_map = {}
+                    for c in cur.fetchall():
+                        self.full_db["cameras"][str(c["device_id"])] = {
+                            "device_id": str(c["device_id"]),
+                            "name": c["name"],
+                            "location": c["location"],
+                            "is_active": c["is_active"]
+                        }
+                        camera_map[c["id"]] = str(c["device_id"])
+                    
+                    cur.execute("SELECT * FROM shelves;")
+                    for s in cur.fetchall():
+                        m_id = str(s["aruco_marker_id"])
+                        self.full_db["shelves"][m_id] = {
+                            "camera_id": camera_map.get(s["camera_id"], "0"),
+                            "aruco_marker_id": m_id,
+                            "name": s["name"],
+                            "zone": s["zone"],
+                            "polygon": json.loads(s["polygon"]) if s["polygon"] else []
+                        }
+                        
+                    cur.execute("SELECT * FROM products;")
+                    for p in cur.fetchall():
+                        m_id = str(p["aruco_marker_id"])
+                        self.full_db["products"][m_id] = {
+                            "sku": p["sku"],
+                            "name": p["name"],
+                            "category": p["category"],
+                            "zone": p["zone"],
+                            "assigned_shelf": p["assigned_shelf"],
+                            "current_shelf": p["current_shelf"],
+                            "status": p["status"],
+                            "quantity": p["quantity"],
+                            "aruco_marker_id": m_id
+                        }
+                        
+                    cur.execute("SELECT * FROM aruco_markers;")
+                    for a in cur.fetchall():
+                        m_id = str(a["marker_id"])
+                        self.full_db["aruco_markers"][m_id] = {
+                            "marker_id": m_id,
+                            "type": a["type"],
+                            "linked_product_id": str(a["linked_product_id"]) if a["linked_product_id"] else None,
+                            "linked_shelf_id": str(a["linked_shelf_id"]) if a["linked_shelf_id"] else None
+                        }
         except Exception as e:
-            print(f"DB write error: {e}")
+            print(f"DB Load error: {e}")
 
     def load_for_camera(self):
-        self.read_db()
         if self.cam_key not in self.full_db["cameras"]:
             self.full_db["cameras"][self.cam_key] = {
                 "device_id": self.cam_key,
@@ -151,7 +189,89 @@ class CVEngine:
                 "location": "Warehouse",
                 "is_active": True
             }
-            self.write_db()
+            self.db_changed = True
+
+    def _db_sync_loop(self):
+        while self.db_sync_running:
+            time.sleep(1.0)
+            if not self.db_changed or not DB_URL:
+                continue
+                
+            with self.lock:
+                db_snapshot = json.loads(json.dumps(self.full_db))
+                self.db_changed = False
+                
+            try:
+                with psycopg2.connect(DB_URL, cursor_factory=RealDictCursor) as conn:
+                    with conn.cursor() as cur:
+                        camera_ids = {}
+                        for cam_key, cam_data in db_snapshot["cameras"].items():
+                            cur.execute('''
+                                INSERT INTO cameras (device_id, name, location, is_active)
+                                VALUES (%s, %s, %s, %s)
+                                ON CONFLICT (device_id) DO UPDATE 
+                                SET name=EXCLUDED.name, location=EXCLUDED.location, is_active=EXCLUDED.is_active
+                                RETURNING id;
+                            ''', (cam_data["device_id"], cam_data["name"], cam_data.get("location", ""), cam_data.get("is_active", True)))
+                            camera_ids[cam_key] = cur.fetchone()["id"]
+                            
+                        shelf_ids = {}
+                        for s_id, s_data in db_snapshot["shelves"].items():
+                            cam_int_id = camera_ids.get(s_data["camera_id"])
+                            if not cam_int_id: continue
+                            cur.execute('''
+                                INSERT INTO shelves (aruco_marker_id, camera_id, name, zone, polygon, is_active)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (aruco_marker_id) DO UPDATE 
+                                SET camera_id=EXCLUDED.camera_id, name=EXCLUDED.name, zone=EXCLUDED.zone, polygon=EXCLUDED.polygon
+                                RETURNING id;
+                            ''', (int(s_id), cam_int_id, s_data["name"], s_data.get("zone", "General"), json.dumps(s_data.get("polygon", [])), True))
+                            shelf_ids[s_id] = cur.fetchone()["id"]
+                            
+                        product_ids = {}
+                        for p_id, p_data in db_snapshot["products"].items():
+                            cur.execute('''
+                                INSERT INTO products (sku, name, category, zone, assigned_shelf, current_shelf, status, quantity, aruco_marker_id)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (sku) DO UPDATE 
+                                SET name=EXCLUDED.name, category=EXCLUDED.category, zone=EXCLUDED.zone, 
+                                    assigned_shelf=EXCLUDED.assigned_shelf, current_shelf=EXCLUDED.current_shelf,
+                                    status=EXCLUDED.status, quantity=EXCLUDED.quantity, aruco_marker_id=EXCLUDED.aruco_marker_id
+                                RETURNING id;
+                            ''', (
+                                p_data["sku"], p_data["name"], p_data.get("category", "Uncategorized"),
+                                p_data.get("zone", "TBD"), p_data.get("assigned_shelf", ""),
+                                p_data.get("current_shelf", ""), p_data.get("status", "verified"),
+                                p_data.get("quantity", 1), int(p_id)
+                            ))
+                            product_ids[p_id] = cur.fetchone()["id"]
+
+                        for m_id, m_data in db_snapshot["aruco_markers"].items():
+                            l_prod = product_ids.get(m_data["linked_product_id"]) if m_data.get("linked_product_id") else None
+                            l_shelf = shelf_ids.get(m_data["linked_shelf_id"]) if m_data.get("linked_shelf_id") else None
+                            cur.execute('''
+                                INSERT INTO aruco_markers (marker_id, type, linked_product_id, linked_shelf_id)
+                                VALUES (%s, %s, %s, %s)
+                                ON CONFLICT (marker_id) DO UPDATE 
+                                SET type=EXCLUDED.type, linked_product_id=EXCLUDED.linked_product_id, linked_shelf_id=EXCLUDED.linked_shelf_id
+                            ''', (int(m_id), m_data["type"], l_prod, l_shelf))
+
+                        for d_id, d_data in db_snapshot["detections"].items():
+                            cam_int_id = camera_ids.get(d_data["camera_id"])
+                            if not cam_int_id: continue
+                            
+                            p_int = product_ids.get(d_id)
+                            s_int = shelf_ids.get(d_id)
+                            
+                            cur.execute('''
+                                INSERT INTO detections (camera_id, product_id, aruco_marker_id, shelf_id, x, y, status)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ''', (cam_int_id, p_int, int(d_id), s_int, d_data["x"], d_data["y"], "in_transit"))
+
+                    conn.commit()
+            except Exception as e:
+                print(f"DB Sync error: {e}")
+                traceback.print_exc()
 
     async def _notify_ws(self):
         await manager.broadcast({"type": "inventory_update", "data": self.full_db})

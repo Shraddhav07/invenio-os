@@ -1,10 +1,5 @@
 import { create } from "zustand";
 import type {
-  ShelfStatus,
-  InventoryItem,
-  ActivityEvent,
-  AIRecommendation,
-  TaskItem,
   InvenioState,
 } from "./types";
 import {
@@ -19,13 +14,11 @@ import {
 } from "./constants";
 import {
   getAisleSafePath,
-  getRecommendedShelves,
   isShelfAllowedForCategory,
   syncWarehouseState,
 } from "./utils";
 import { db } from "../db/index";
 import { products } from "../db/schema";
-import { productToInventoryItem } from "../db/utils";
 
 export const useInvenioStore = create<InvenioState>((set, get) => ({
   theme: "dark",
@@ -107,7 +100,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
           // and pending updates get tracked for Neon sync.
           
           let hasChanges = false;
-          let newPending = [...pendingDbUpdates];
+          const newPending = [...pendingDbUpdates];
           const newInventory = [...inventory];
           
           // Map products
@@ -124,7 +117,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
                    currentShelf: p.current_shelf,
                    status: p.status,
                    quantity: p.quantity,
-                } as any;
+                } as import("./types").InventoryItem;
                 newInventory.push(newItem);
                 hasChanges = true;
                 if (isLiveSyncEnabled) {
@@ -309,10 +302,10 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       // Note: The contents of this massive animation loop are kept fully intact!
       const updatedWorkers = { ...state.workers };
       const updatedTaskQueue = [...state.taskQueue];
-      let updatedInventory = [...state.inventory];
+      const updatedInventory = [...state.inventory];
       let updatedShelves = { ...state.shelves };
       let updatedAlerts = [...state.alerts];
-      let updatedActivities = [...state.activities];
+      const updatedActivities = [...state.activities];
 
       Object.keys(updatedWorkers).forEach((workerId) => {
         const worker = updatedWorkers[workerId];
@@ -773,7 +766,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       if (!item) return {};
 
       item.assignedShelf = targetShelfId;
-      let assignedWorkerId: "alpha" | "beta" | null =
+      const assignedWorkerId: "alpha" | "beta" | null =
         preferredWorkerId === "alpha" && state.workers.alpha.status === "idle"
           ? "alpha"
           : preferredWorkerId === "beta" && state.workers.beta.status === "idle"
@@ -845,7 +838,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       const taskIndex = state.taskQueue.findIndex((t) => t.id === taskId);
       if (taskIndex === -1) return {};
       const task = state.taskQueue[taskIndex];
-      let assignedWorkerId: "alpha" | "beta" =
+      const assignedWorkerId: "alpha" | "beta" =
         preferredWorkerId === "alpha" && state.workers.alpha.status === "idle"
           ? "alpha"
           : preferredWorkerId === "beta" && state.workers.beta.status === "idle"
@@ -911,7 +904,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
       if (task.assignedWorkerId && updatedWorkers[task.assignedWorkerId]) {
         updatedWorkers[task.assignedWorkerId] = {
           ...updatedWorkers[task.assignedWorkerId],
-          status: "idle" as "idle",
+          status: "idle" as const,
           currentTaskId: null,
           targetShelfId: null,
           carriedItemName: null,
@@ -1060,10 +1053,10 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
     const state = get();
     return {
       total: state.inventory.reduce((acc, curr) => acc + curr.quantity, 0),
-      categories: state.inventory.reduce((acc: any, item) => {
+      categories: state.inventory.reduce((acc: Record<string, number>, item) => {
         acc[item.category] = (acc[item.category] || 0) + item.quantity;
         return acc;
-      }, {}),
+      }, {} as Record<string, number>),
       itemsCount: state.inventory.length,
     };
   },
@@ -1078,7 +1071,7 @@ export const useInvenioStore = create<InvenioState>((set, get) => ({
     set((state) => {
       const alert = state.alerts.find((a) => a.id === alertId);
       if (!alert) return {};
-      let updatedShelves = { ...state.shelves };
+      const updatedShelves = { ...state.shelves };
       let updatedInventory = [...state.inventory];
       if (alert.shelfId && state.shelves[alert.shelfId]) {
         updatedShelves[alert.shelfId] = {

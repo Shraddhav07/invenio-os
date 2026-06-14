@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, integer, text, timestamp, foreignKey, unique, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, text, timestamp, foreignKey, boolean } from "drizzle-orm/pg-core";
 
 // Products table with ArUco marker tracking
 export const products = pgTable("products", {

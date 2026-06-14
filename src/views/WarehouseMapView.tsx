@@ -3,24 +3,20 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useInvenioStore } from "../store/store";
 import { WarehouseScene } from "../components/3d/WarehouseScene";
-import type { Shelf } from "../store/types";
+
 
 export const WarehouseMapView: React.FC = () => {
   const { shelves, focusedShelfId, activePath, workers } = useInvenioStore();
 
-  const [selectedShelf, setSelectedShelf] = useState<Shelf | null>(null);
+  const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null);
+
+
   const [resetTrigger, setResetTrigger] = useState(-1);
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
-    if (selectedShelf && shelves[selectedShelf.id]) {
-      setSelectedShelf(shelves[selectedShelf.id]);
-    }
-  }, [shelves, selectedShelf]);
-
-  useEffect(() => {
     if (focusedShelfId && shelves[focusedShelfId]) {
-      setSelectedShelf(shelves[focusedShelfId]);
+      setSelectedShelfId(focusedShelfId);
     }
   }, [focusedShelfId, shelves]);
 
@@ -34,7 +30,7 @@ export const WarehouseMapView: React.FC = () => {
         <button
           onClick={() => {
             useInvenioStore.getState().clearActivePath();
-            setSelectedShelf(null);
+            setSelectedShelfId(null);
             setResetTrigger(Date.now());
           }}
           className="bg-[#121317]/80 backdrop-blur-md border border-[#22252C] text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-[#171A20] hover:border-[#FF6B35]/50 transition-all shadow-lg"
@@ -47,7 +43,7 @@ export const WarehouseMapView: React.FC = () => {
         <Canvas camera={{ position: [0, 14, 16], fov: 50 }}>
           <WarehouseScene
             shelves={shelves}
-            onSelectShelf={setSelectedShelf}
+            onSelectShelf={(shelf) => setSelectedShelfId(shelf?.id || null)}
             focusedShelfId={focusedShelfId}
             activePath={activePath}
             workers={workers}

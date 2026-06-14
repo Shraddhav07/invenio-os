@@ -1,6 +1,6 @@
 import type { Shelf } from "./types";
 
-export const getNearestAisleX = (x: number): number => {
+const getNearestAisleX = (x: number): number => {
   const lanes = [-10, -6, -2, 2, 6, 10];
   let nearest = lanes[0];
   let minDist = Math.abs(x - nearest);
@@ -32,7 +32,7 @@ export const getAisleSafePath = (
   const startAisleX = getNearestAisleX(x1);
   const endAisleX = getNearestAisleX(x2);
 
-  let corrZ = 5;
+  let corrZ: number;
   if (z1 > 5 || z2 > 5) {
     corrZ = 5;
   } else if (z1 < -5 || z2 < -5) {
@@ -126,6 +126,7 @@ export const getRecommendedShelves = (category: string): string[] => {
 export const isShelfAllowedForCategory = (
   category: string,
   shelfId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _shelves?: Record<string, Shelf>,
 ): boolean => {
   if (shelfId === "REC") return true;
@@ -133,7 +134,7 @@ export const isShelfAllowedForCategory = (
   return allowedShelves.includes(shelfId);
 };
 
-export const syncWarehouseState = (state: any) => {
+export const syncWarehouseState = (state: import("./types").InvenioState | any) => {
   const updatedShelves = { ...state.shelves };
   const updatedInventory = [...state.inventory];
   let updatedAlerts = [...state.alerts];

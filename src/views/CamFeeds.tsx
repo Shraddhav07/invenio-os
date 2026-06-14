@@ -84,11 +84,15 @@ export default function CamFeeds() {
 
   useEffect(() => {
     if (serverData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMappingState(serverData.state.app_state);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPointsCount(serverData.state.polygon_points_count ?? 0);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInventory(serverData.inventory);
 
       if (serverData.state.app_state === "MAPPING_SHELF") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setStatus(`Mapping shelf area — click point ${(serverData.state.polygon_points_count ?? 0) + 1} of 4 on the video.`);
       }
     }

@@ -3,7 +3,7 @@ CV Inventory OS - FastAPI Backend
 Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel

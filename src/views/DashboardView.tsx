@@ -27,7 +27,6 @@ export const DashboardView: React.FC = () => {
     shelves,
     alerts,
     activities,
-    eventThroughput,
     workers,
     taskQueue,
     setRoute,

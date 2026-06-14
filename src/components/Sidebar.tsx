@@ -5,9 +5,7 @@ import {
   Map,
   List,
   HelpCircle,
-  BarChart3,
   ShieldAlert,
-  Terminal,
   Webcam,
 } from "lucide-react";
 import { useInvenioStore } from "../store/store";

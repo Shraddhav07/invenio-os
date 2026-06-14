@@ -317,6 +317,7 @@ If you discover a security vulnerability, please open a private issue rather tha
 
 | Role | Contributor |
 |---|---|
+| Developer & Project Manager | [Vishesh Dubey](https://github.com/Vishuyo) |
 | Developer & Architect | [Shradha Vishwakarma](https://github.com/Shraddhav07) |
 
 

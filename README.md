@@ -318,7 +318,10 @@ If you discover a security vulnerability, please open a private issue rather tha
 | Role | Contributor |
 |---|---|
 | Developer & Project Manager | [Vishesh Dubey](https://github.com/Vishuyo) |
+| Subject Matter Expert | [Isaac Paul](https://github.com/shaneintentionboi06) |
+| Subject Matter Expert | [Pranshul Gaikwad](https://github.com/PranshulGaik) |
 | Developer & Architect | [Shradha Vishwakarma](https://github.com/Shraddhav07) |
+| UI/UX Designer | [Shreyansh Baid](https://github.com/shreyansh-cmd-code) |
 
 
 ---
